@@ -450,10 +450,14 @@
   });
 
   elements.boardViewport.addEventListener("pointerdown", event => {
-    if (event.target.closest(".board-box")) return;
+    const overBox = Boolean(event.target.closest(".board-box"));
+    if (overBox && event.pointerType === "mouse") return;
+    event.preventDefault();
     elements.boardViewport.setPointerCapture(event.pointerId);
-    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
-    if (state.pointers.size === 1) state.gesture = {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y};
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox});
+    if (state.pointers.size === 1) state.gesture = overBox
+      ? {type: "pending"}
+      : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y};
     if (state.pointers.size === 2) {
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
@@ -463,7 +467,8 @@
   });
   elements.boardViewport.addEventListener("pointermove", event => {
     if (!state.pointers.has(event.pointerId)) return;
-    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    const previous = state.pointers.get(event.pointerId);
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox: previous.overBox});
     if (state.gesture?.type === "pan" && state.pointers.size === 1) {
       state.transform.x = state.gesture.originX + event.clientX - state.gesture.x;
       state.transform.y = state.gesture.originY + event.clientY - state.gesture.y;
@@ -485,7 +490,9 @@
     if (!state.pointers.size) { state.gesture = null; elements.boardViewport.classList.remove("panning"); }
     else {
       const pointer = [...state.pointers.values()][0];
-      state.gesture = {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y};
+      state.gesture = pointer.overBox
+        ? {type: "pending"}
+        : {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y};
     }
   };
   elements.boardViewport.addEventListener("pointerup", endPointer);
