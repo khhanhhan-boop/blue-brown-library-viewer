@@ -406,24 +406,44 @@
     openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(textParts(display.body).body || display.body)}</div>`);
   }
 
-  function branchHtml(project, item, depth, visited, numbering) {
-    if (visited.has(item.data.id)) return "";
-    visited.add(item.data.id);
-    const number = numbering.get(item.data.id)?.label || "";
-    const numberedTitle = value => `${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${value}</span>`;
-    let content = "";
-    if (item.kind === "heading") {
-      const level = Math.max(2, Math.min(4, Number(item.data.headingLevel) + 1));
-      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h${level} class="branch-heading ${number ? "numbered" : ""}">${numberedTitle(inlineMarkdown(item.data.title))}</h${level}>`;
-    } else if (item.kind === "text") {
-      const parts = textParts(item.data.body || item.data.title);
-      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h4 class="branch-item-title ${number ? "numbered" : ""}">${numberedTitle(inlineMarkdown(parts.title))}</h4>${parts.body ? `<div class="markdown">${markdown(parts.body)}</div>` : ""}`;
-    } else {
-      const display = noteDisplay(project, item.data.noteId);
-      content = `<section class="branch-section branch-note" style="--depth:${Math.min(depth, 5)}"><button class="branch-item-title ${number ? "numbered" : ""}" type="button" data-note-id="${escapeHtml(item.data.noteId)}">${numberedTitle(escapeHtml(display.title))}</button><p>${escapeHtml(textParts(display.body).body || display.body)}</p>`;
+  function branchRows(project, rootId) {
+    const included = new Set([rootId]);
+    const pending = [rootId];
+    while (pending.length) {
+      const parentId = pending.shift();
+      project.edges.filter(edge => edge.kind === "hierarchy" && edge.from === parentId).forEach(edge => {
+        if (included.has(edge.to)) return;
+        included.add(edge.to);
+        pending.push(edge.to);
+      });
     }
-    content += hierarchyChildren(project, item.data.id).map(child => branchHtml(project, child, depth + 1, visited, numbering)).join("");
-    return `${content}</section>`;
+    return outlineRows(project).filter(row => included.has(row.item.id));
+  }
+
+  function branchHtml(project, rows) {
+    const numbering = outlineNumbering(outlineRows(project));
+    const rootContentDepth = rows[0]?.item.kind === "heading" ? 0 : Math.max(0, Number(rows[0]?.contentDepth) || 0);
+    const html = rows.flatMap(row => {
+      const item = row.item;
+      const number = numbering.get(item.id)?.label || "";
+      const numberHtml = className => number ? `<span class="${className}">${escapeHtml(number)}</span>` : "";
+      if (item.kind === "heading") {
+        const level = Math.max(2, Math.min(6, (Number(item.data.headingLevel) || 2) + 1));
+        const title = String(item.data.title || "새 제목").replace(/\s+/g, " ").trim();
+        return `<h${level} class="branch-heading ${number ? "numbered" : ""}">${numberHtml("branch-heading-number")}<span class="branch-heading-text">${escapeHtml(title)}</span></h${level}>`;
+      }
+      const depth = Math.max(0, Math.min(3, (Number(row.contentDepth) || 0) - rootContentDepth));
+      const continuation = value => String(value || "").split("\n").filter(line => line.trim()).map(line => `<p class="branch-continuation" style="--depth:${depth}">${inlineMarkdown(line)}</p>`);
+      if (item.kind === "text") {
+        const parts = textParts(item.data.body || item.data.title);
+        return [`<div class="branch-list-item ${number ? "numbered" : ""}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<strong>${escapeHtml(parts.title)}</strong></div>`, ...continuation(parts.body)];
+      }
+      const display = noteDisplay(project, item.data.noteId);
+      const body = textParts(display.body).body || display.body;
+      const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+      return [`<div class="branch-list-item ${number ? "numbered" : ""}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : [])];
+    }).join("");
+    return `<div class="branch-preview">${html}</div>`;
   }
 
   function openEndpoint(endpoint) {
@@ -439,8 +459,7 @@
       const number = outlineNumbering(outlineRows(project)).get(item.data.id)?.label || "";
       openReader("글", `<h1 class="reader-title ${number ? "numbered" : ""}">${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${inlineMarkdown(parts.title)}</span></h1><div class="markdown">${markdown(parts.body)}</div>`);
     } else {
-      const numbering = outlineNumbering(outlineRows(project));
-      openReader("하위 글", branchHtml(project, item, 0, new Set(), numbering));
+      openReader("하위 글", branchHtml(project, branchRows(project, item.data.id)));
     }
   }
 
