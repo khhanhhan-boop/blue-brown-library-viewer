@@ -192,17 +192,18 @@
     const data = item.data;
     const style = `left:${data.x}px;top:${data.y}px;width:${data.width}px;height:${data.height}px;--box-color:${escapeHtml(data.color || project.defaultColor)}`;
     const bookmark = data.bookmarked ? `<span class="box-bookmark">★</span>` : "";
+    const compact = data.compact ? " compact" : "";
     if (item.kind === "heading") {
       const level = Math.max(1, Math.min(4, Number(data.headingLevel) || 2));
       return `<article class="board-box heading level-${level}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button">${inlineMarkdown(data.title)}</button></article>`;
     }
     if (item.kind === "text") {
       const parts = textParts(data.body || data.title);
-      return `<article class="board-box text" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
+      return `<article class="board-box text${compact}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
     }
     const display = noteDisplay(project, data.noteId);
     const body = textParts(display.body).body;
-    return `<article class="board-box note" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</span>${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+    return `<article class="board-box note${compact}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor ? `<span class="box-author">${escapeHtml(display.paperAuthor)}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
   }
 
   function renderBoard() {
@@ -271,8 +272,9 @@
     visited.add(item.data.id);
     const children = hierarchyChildren(project, item.data.id);
     const expanded = state.allNavExpanded || state.expandedNav.has(item.data.id);
-    const source = item.kind === "note" ? noteDisplay(project, item.data.noteId).paperTitle : "";
-    return `<div class="nav-row ${item.kind}" style="--depth:${Math.min(depth, 6)}"><div class="nav-row-main">${children.length ? `<button class="nav-toggle" type="button" data-nav-toggle="${escapeHtml(item.data.id)}">${expanded ? "▾" : "▸"}</button>` : `<span class="nav-toggle"></span>`}<button class="nav-open" type="button" data-endpoint="${escapeHtml(item.data.id)}">${escapeHtml(itemTitle(project, item))}</button>${source ? `<span class="nav-source">${escapeHtml(source)}</span>` : ""}</div>${expanded ? children.map(child => navRows(project, child, depth + 1, visited)).join("") : ""}</div>`;
+    const display = item.kind === "note" ? noteDisplay(project, item.data.noteId) : null;
+    const source = display ? `${display.paperTitle}${display.paperAuthor ? ` · ${display.paperAuthor}` : ""}` : "";
+    return `<div class="nav-row ${item.kind}" style="--depth:${Math.min(depth, 6)}"><div class="nav-row-main">${children.length ? `<button class="nav-toggle" type="button" data-nav-toggle="${escapeHtml(item.data.id)}">${expanded ? "▾" : "▸"}</button>` : `<span class="nav-toggle"></span>`}<div class="nav-label"><button class="nav-open" type="button" data-endpoint="${escapeHtml(item.data.id)}">${escapeHtml(itemTitle(project, item))}</button>${source ? `<span class="nav-source">${escapeHtml(source)}</span>` : ""}</div></div>${expanded ? children.map(child => navRows(project, child, depth + 1, visited)).join("") : ""}</div>`;
   }
 
   function renderNav() {
