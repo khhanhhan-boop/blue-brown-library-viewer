@@ -1,0 +1,500 @@
+(() => {
+  "use strict";
+
+  const $ = selector => document.querySelector(selector);
+  const elements = {
+    loading: $("#viewerLoading"), auth: $("#authScreen"), authForm: $("#authForm"), authEmail: $("#authEmail"), authStatus: $("#authStatus"),
+    shell: $("#viewerShell"), projectSelect: $("#projectSelect"), projectList: $("#projectList"), projectCount: $("#projectCount"),
+    publishedAt: $("#publishedAt"), refresh: $("#refreshViewer"), signOut: $("#signOutViewer"), tabs: [...document.querySelectorAll("[data-view]")],
+    boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
+    boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), fitBoard: $("#fitBoard"), navTree: $("#navTree"), expandNav: $("#expandNav"),
+    noteSearch: $("#noteSearch"), noteList: $("#noteList"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
+    readerContent: $("#readerContent"), readerBack: $("#readerBack"), message: $("#viewerMessage"),
+  };
+  const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
+  const hasCloudConfig = /^https:\/\//.test(config.supabaseUrl || "") && Boolean(config.publishableKey);
+  const state = {
+    snapshot: null,
+    projectId: "",
+    view: "board",
+    selectedEndpoint: "",
+    transform: {x: 0, y: 0, zoom: 1},
+    pointers: new Map(),
+    gesture: null,
+    expandedNav: new Set(),
+    allNavExpanded: true,
+    client: null,
+  };
+
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>'"]/g, character => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"}[character]));
+  }
+
+  function inlineMarkdown(value) {
+    return escapeHtml(value)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+  }
+
+  function markdown(value) {
+    const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
+    const output = [];
+    let paragraph = [];
+    let list = [];
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      output.push(`<p>${paragraph.map(inlineMarkdown).join("<br>")}</p>`);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (!list.length) return;
+      output.push(`<ul>${list.map(item => `<li>${inlineMarkdown(item)}</li>`).join("")}</ul>`);
+      list = [];
+    };
+    lines.forEach(line => {
+      const heading = line.match(/^(#{1,3})\s+(.+)$/);
+      const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+      if (heading) {
+        flushParagraph(); flushList();
+        const level = heading[1].length;
+        output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      } else if (bullet) {
+        flushParagraph(); list.push(bullet[1]);
+      } else if (!line.trim()) {
+        flushParagraph(); flushList();
+      } else {
+        flushList(); paragraph.push(line);
+      }
+    });
+    flushParagraph(); flushList();
+    return output.join("");
+  }
+
+  function textParts(value) {
+    const lines = String(value || "").trim().split(/\r?\n/);
+    const first = lines.findIndex(line => line.trim());
+    if (first < 0) return {title: "새 글", body: ""};
+    return {title: lines[first].trim(), body: lines.slice(first + 1).join("\n").trim()};
+  }
+
+  function currentProject() {
+    return state.snapshot?.projects?.find(project => project.id === state.projectId) || null;
+  }
+
+  function noteById(noteId) {
+    return state.snapshot?.notes?.find(note => note.id === noteId) || null;
+  }
+
+  function endpointItem(project, endpoint) {
+    const node = project?.nodes?.find(item => item.id === endpoint);
+    if (node) return {kind: "note", data: node};
+    const group = project?.groups?.find(item => item.id === endpoint);
+    if (group) return {kind: group.type === "text" ? "text" : "heading", data: group};
+    return null;
+  }
+
+  function noteDisplay(project, noteId) {
+    const note = noteById(noteId);
+    const member = project?.members?.[noteId] || {};
+    return {
+      title: note?.title || member.lead || "삭제된 메모",
+      body: note?.body || member.summary || "원본 메모를 찾지 못했습니다.",
+      paperTitle: note?.paperTitle || member.sourceTitle || "출처 정보 없음",
+      paperAuthor: note?.paperAuthor || member.sourceAuthor || "",
+      note,
+    };
+  }
+
+  function showMessage(message, timeout = 2800) {
+    elements.message.textContent = message;
+    elements.message.classList.remove("hidden");
+    window.clearTimeout(showMessage.timer);
+    showMessage.timer = window.setTimeout(() => elements.message.classList.add("hidden"), timeout);
+  }
+
+  function setLoading(done) {
+    elements.loading.classList.toggle("done", Boolean(done));
+  }
+
+  function setView(view) {
+    state.view = ["board", "nav", "notes"].includes(view) ? view : "board";
+    elements.tabs.forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
+    elements.boardView.classList.toggle("hidden", state.view !== "board");
+    elements.navView.classList.toggle("hidden", state.view !== "nav");
+    elements.notesView.classList.toggle("hidden", state.view !== "notes");
+    if (state.view === "board") window.requestAnimationFrame(() => fitBoard(false));
+    if (state.view === "nav") renderNav();
+    if (state.view === "notes") renderNotes();
+  }
+
+  function projectNoteIds(project) {
+    return new Set([...Object.keys(project?.members || {}), ...(project?.nodes || []).map(node => node.noteId)]);
+  }
+
+  function renderProjects() {
+    const projects = state.snapshot?.projects || [];
+    if (!projects.some(project => project.id === state.projectId)) state.projectId = projects[0]?.id || "";
+    elements.projectCount.textContent = `${projects.length}`;
+    elements.projectSelect.innerHTML = projects.map(project => `<option value="${escapeHtml(project.id)}" ${project.id === state.projectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("");
+    elements.projectList.innerHTML = projects.map(project => `<button class="project-item ${project.id === state.projectId ? "active" : ""}" type="button" data-project="${escapeHtml(project.id)}" style="--project-color:${escapeHtml(project.defaultColor)}"><span>${escapeHtml(project.name)}</span></button>`).join("");
+  }
+
+  function rectangleBoundary(item, toward, clearance = 2) {
+    const dx = toward.x - item.x;
+    const dy = toward.y - item.y;
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    const ux = dx / length;
+    const uy = dy / length;
+    const halfWidth = Math.max(8, Number(item.width) || 180) / 2;
+    const halfHeight = Math.max(8, Number(item.height) || 80) / 2;
+    const scale = Math.min(halfWidth / Math.max(0.001, Math.abs(ux)), halfHeight / Math.max(0.001, Math.abs(uy)));
+    return {x: item.x + ux * (scale + clearance), y: item.y + uy * (scale + clearance)};
+  }
+
+  function relationGeometry(from, to, edge) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const direction = [...String(edge.id || "")].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 2 ? 1 : -1;
+    const hasBend = edge.bend !== null && edge.bend !== undefined && Number.isFinite(Number(edge.bend));
+    const bendRatio = hasBend ? Number(edge.bend) : 0.16 * direction;
+    const alongRatio = Number.isFinite(Number(edge.along)) ? Number(edge.along) : 0;
+    const control = {
+      x: (from.x + to.x) / 2 + (dx / distance) * alongRatio * distance + (-dy / distance) * bendRatio * distance,
+      y: (from.y + to.y) / 2 + (dy / distance) * alongRatio * distance + (dx / distance) * bendRatio * distance,
+    };
+    const mode = ["forward", "backward", "both"].includes(edge.arrowMode) ? edge.arrowMode : "none";
+    const arrowLength = Math.max(9, Math.min(13, distance * 0.04));
+    const start = rectangleBoundary(from, control, mode === "backward" || mode === "both" ? arrowLength * 0.9 : 2);
+    const end = rectangleBoundary(to, control, mode === "forward" || mode === "both" ? arrowLength * 0.9 : 2);
+    const arrow = (tip, tangent, reverse = false) => {
+      const length = Math.max(0.001, Math.hypot(tangent.x, tangent.y));
+      const ux = tangent.x / length * (reverse ? -1 : 1);
+      const uy = tangent.y / length * (reverse ? -1 : 1);
+      const nx = -uy, ny = ux, wing = arrowLength * 0.48;
+      const bx = tip.x - ux * arrowLength, by = tip.y - uy * arrowLength;
+      return `M ${bx + nx * wing} ${by + ny * wing} L ${tip.x} ${tip.y} L ${bx - nx * wing} ${by - ny * wing}`;
+    };
+    return {
+      path: `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`,
+      forward: mode === "forward" || mode === "both" ? arrow(end, {x: to.x - control.x, y: to.y - control.y}) : "",
+      backward: mode === "backward" || mode === "both" ? arrow(start, {x: control.x - from.x, y: control.y - from.y}, true) : "",
+      labelX: 0.25 * start.x + 0.5 * control.x + 0.25 * end.x,
+      labelY: 0.25 * start.y + 0.5 * control.y + 0.25 * end.y,
+    };
+  }
+
+  function boxHtml(project, item) {
+    const data = item.data;
+    const style = `left:${data.x}px;top:${data.y}px;width:${data.width}px;height:${data.height}px;--box-color:${escapeHtml(data.color || project.defaultColor)}`;
+    const bookmark = data.bookmarked ? `<span class="box-bookmark">★</span>` : "";
+    if (item.kind === "heading") {
+      const level = Math.max(1, Math.min(4, Number(data.headingLevel) || 2));
+      return `<article class="board-box heading level-${level}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button">${inlineMarkdown(data.title)}</button></article>`;
+    }
+    if (item.kind === "text") {
+      const parts = textParts(data.body || data.title);
+      return `<article class="board-box text" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
+    }
+    const display = noteDisplay(project, data.noteId);
+    const body = textParts(display.body).body;
+    return `<article class="board-box note" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</span>${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+  }
+
+  function renderBoard() {
+    const project = currentProject();
+    if (!project) {
+      elements.boardStage.innerHTML = "";
+      elements.boardTitle.textContent = "프로젝트가 없습니다.";
+      return;
+    }
+    elements.boardTitle.textContent = project.name;
+    const endpoints = new Map([...project.nodes, ...project.groups].map(item => [item.id, item]));
+    const edges = project.edges.map(edge => {
+      const from = endpoints.get(edge.from), to = endpoints.get(edge.to);
+      if (!from || !to) return "";
+      if (edge.kind === "hierarchy") return `<line class="edge-hierarchy" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"></line>`;
+      const geometry = relationGeometry(from, to, edge);
+      const color = escapeHtml(edge.color || "#8a5962");
+      const label = String(edge.label || "").split(/\r?\n/).filter(Boolean);
+      const text = label.length ? `<text class="edge-label" text-anchor="middle" x="${geometry.labelX}" y="${geometry.labelY - 9}">${label.map((line, index) => `<tspan x="${geometry.labelX}" dy="${index ? 15 : 0}">${escapeHtml(line)}</tspan>`).join("")}</text>` : "";
+      return `<g style="--edge-color:${color}"><path class="edge-relation" d="${geometry.path}"></path>${geometry.forward ? `<path class="edge-relation" d="${geometry.forward}" style="stroke-dasharray:none"></path>` : ""}${geometry.backward ? `<path class="edge-relation" d="${geometry.backward}" style="stroke-dasharray:none"></path>` : ""}${text}</g>`;
+    }).join("");
+    const boxes = [...project.groups.map(data => ({kind: data.type === "text" ? "text" : "heading", data})), ...project.nodes.map(data => ({kind: "note", data}))].map(item => boxHtml(project, item)).join("");
+    elements.boardStage.innerHTML = `<svg class="edge-layer" viewBox="0 0 2400 1600" aria-hidden="true">${edges}</svg>${boxes}`;
+    if (state.selectedEndpoint) elements.boardStage.querySelector(`[data-endpoint="${CSS.escape(state.selectedEndpoint)}"]`)?.classList.add("selected");
+    applyTransform();
+  }
+
+  function applyTransform() {
+    elements.boardStage.style.transform = `translate(${state.transform.x}px, ${state.transform.y}px) scale(${state.transform.zoom})`;
+  }
+
+  function fitBoard(animate = true) {
+    const project = currentProject();
+    const items = project ? [...project.nodes, ...project.groups] : [];
+    if (!items.length || !elements.boardViewport.clientWidth) return;
+    const minX = Math.min(...items.map(item => item.x - item.width / 2)) - 90;
+    const maxX = Math.max(...items.map(item => item.x + item.width / 2)) + 90;
+    const minY = Math.min(...items.map(item => item.y - item.height / 2)) - 90;
+    const maxY = Math.max(...items.map(item => item.y + item.height / 2)) + 90;
+    const zoom = Math.max(0.28, Math.min(1.35, Math.min(elements.boardViewport.clientWidth / Math.max(1, maxX - minX), elements.boardViewport.clientHeight / Math.max(1, maxY - minY))));
+    state.transform = {x: (elements.boardViewport.clientWidth - (minX + maxX) * zoom) / 2, y: (elements.boardViewport.clientHeight - (minY + maxY) * zoom) / 2, zoom};
+    elements.boardStage.style.transition = animate ? "transform 280ms ease" : "none";
+    applyTransform();
+    window.setTimeout(() => { elements.boardStage.style.transition = ""; }, 300);
+  }
+
+  function hierarchyChildren(project, endpoint) {
+    const ids = project.edges.filter(edge => edge.kind === "hierarchy" && edge.from === endpoint).map(edge => edge.to);
+    return ids.map(id => endpointItem(project, id)).filter(Boolean).sort((a, b) => (Number(a.data.order) || 0) - (Number(b.data.order) || 0));
+  }
+
+  function hierarchyRoots(project) {
+    const incoming = new Set(project.edges.filter(edge => edge.kind === "hierarchy").map(edge => edge.to));
+    return [...project.groups.map(data => ({kind: data.type === "text" ? "text" : "heading", data})), ...project.nodes.map(data => ({kind: "note", data}))]
+      .filter(item => !incoming.has(item.data.id))
+      .sort((a, b) => (Number(a.data.order) || 0) - (Number(b.data.order) || 0));
+  }
+
+  function itemTitle(project, item) {
+    if (item.kind === "note") return noteDisplay(project, item.data.noteId).title;
+    return item.kind === "text" ? textParts(item.data.body || item.data.title).title : item.data.title;
+  }
+
+  function navRows(project, item, depth, visited) {
+    if (visited.has(item.data.id)) return "";
+    visited.add(item.data.id);
+    const children = hierarchyChildren(project, item.data.id);
+    const expanded = state.allNavExpanded || state.expandedNav.has(item.data.id);
+    const source = item.kind === "note" ? noteDisplay(project, item.data.noteId).paperTitle : "";
+    return `<div class="nav-row ${item.kind}" style="--depth:${Math.min(depth, 6)}"><div class="nav-row-main">${children.length ? `<button class="nav-toggle" type="button" data-nav-toggle="${escapeHtml(item.data.id)}">${expanded ? "▾" : "▸"}</button>` : `<span class="nav-toggle"></span>`}<button class="nav-open" type="button" data-endpoint="${escapeHtml(item.data.id)}">${escapeHtml(itemTitle(project, item))}</button>${source ? `<span class="nav-source">${escapeHtml(source)}</span>` : ""}</div>${expanded ? children.map(child => navRows(project, child, depth + 1, visited)).join("") : ""}</div>`;
+  }
+
+  function renderNav() {
+    const project = currentProject();
+    if (!project) { elements.navTree.innerHTML = ""; return; }
+    elements.expandNav.textContent = state.allNavExpanded ? "모두 접기" : "모두 펴기";
+    elements.navTree.innerHTML = hierarchyRoots(project).map(item => navRows(project, item, 0, new Set())).join("") || `<div class="reader-empty">표시할 네비 구조가 없습니다.</div>`;
+  }
+
+  function projectNotes(project) {
+    const ids = projectNoteIds(project);
+    return (state.snapshot?.notes || []).filter(note => ids.has(note.id)).sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  }
+
+  function renderNotes() {
+    const project = currentProject();
+    if (!project) { elements.noteList.innerHTML = ""; return; }
+    const query = elements.noteSearch.value.trim().toLocaleLowerCase();
+    const notes = projectNotes(project).filter(note => !query || [note.title, note.body, note.paperTitle, note.paperAuthor].join(" ").toLocaleLowerCase().includes(query));
+    elements.noteList.innerHTML = notes.map(note => `<button class="note-list-item" type="button" data-note-id="${escapeHtml(note.id)}"><strong>${escapeHtml(note.title)}</strong><span>${escapeHtml(note.paperTitle)}${note.paperAuthor ? ` · ${escapeHtml(note.paperAuthor)}` : ""}</span><p>${escapeHtml(textParts(note.body).body || note.body)}</p></button>`).join("") || `<div class="reader-empty">표시할 메모가 없습니다.</div>`;
+  }
+
+  function openReader(title, html) {
+    elements.readerHeading.textContent = title;
+    elements.readerContent.innerHTML = html;
+    elements.readerContent.scrollTop = 0;
+    elements.readerPanel.classList.add("open");
+  }
+
+  function openNote(noteId) {
+    const project = currentProject();
+    const display = noteDisplay(project, noteId);
+    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(textParts(display.body).body || display.body)}</div>`);
+  }
+
+  function branchHtml(project, item, depth, visited) {
+    if (visited.has(item.data.id)) return "";
+    visited.add(item.data.id);
+    let content = "";
+    if (item.kind === "heading") {
+      const level = Math.max(2, Math.min(4, Number(item.data.headingLevel) + 1));
+      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h${level}>${inlineMarkdown(item.data.title)}</h${level}>`;
+    } else if (item.kind === "text") {
+      const parts = textParts(item.data.body || item.data.title);
+      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h4>${inlineMarkdown(parts.title)}</h4>${parts.body ? `<div class="markdown">${markdown(parts.body)}</div>` : ""}`;
+    } else {
+      const display = noteDisplay(project, item.data.noteId);
+      content = `<section class="branch-section branch-note" style="--depth:${Math.min(depth, 5)}"><button type="button" data-note-id="${escapeHtml(item.data.noteId)}">${escapeHtml(display.title)}</button><p>${escapeHtml(textParts(display.body).body || display.body)}</p>`;
+    }
+    content += hierarchyChildren(project, item.data.id).map(child => branchHtml(project, child, depth + 1, visited)).join("");
+    return `${content}</section>`;
+  }
+
+  function openEndpoint(endpoint) {
+    const project = currentProject();
+    const item = endpointItem(project, endpoint);
+    if (!item) return;
+    state.selectedEndpoint = endpoint;
+    elements.boardStage.querySelectorAll(".selected").forEach(element => element.classList.remove("selected"));
+    elements.boardStage.querySelector(`[data-endpoint="${CSS.escape(endpoint)}"]`)?.classList.add("selected");
+    if (item.kind === "note") openNote(item.data.noteId);
+    else if (item.kind === "text") {
+      const parts = textParts(item.data.body || item.data.title);
+      openReader("글", `<h1 class="reader-title">${inlineMarkdown(parts.title)}</h1><div class="markdown">${markdown(parts.body)}</div>`);
+    } else {
+      openReader("하위 글", branchHtml(project, item, 0, new Set()));
+    }
+  }
+
+  function selectProject(projectId, fit = true) {
+    if (!state.snapshot?.projects?.some(project => project.id === projectId)) return;
+    state.projectId = projectId;
+    state.selectedEndpoint = "";
+    elements.readerPanel.classList.remove("open");
+    renderProjects(); renderBoard(); renderNav(); renderNotes();
+    if (fit) window.requestAnimationFrame(() => fitBoard(false));
+    try { localStorage.setItem("blue-brown-viewer-project", projectId); } catch (_error) {}
+  }
+
+  function renderSnapshot() {
+    const savedProject = (() => { try { return localStorage.getItem("blue-brown-viewer-project") || ""; } catch (_error) { return ""; } })();
+    if (!state.snapshot.projects.some(project => project.id === state.projectId)) state.projectId = state.snapshot.projects.some(project => project.id === savedProject) ? savedProject : state.snapshot.projects[0]?.id || "";
+    elements.publishedAt.textContent = state.snapshot.publishedAt ? `게시 ${new Date(state.snapshot.publishedAt).toLocaleString("ko-KR")}` : "";
+    renderProjects(); renderBoard(); renderNav(); renderNotes(); setView(state.view);
+    window.requestAnimationFrame(() => fitBoard(false));
+  }
+
+  async function loadSnapshot() {
+    let snapshot = null;
+    try {
+      if (hasCloudConfig) {
+        const {data, error} = await state.client.from("library_viewer_snapshots").select("payload,published_at").eq("slug", config.slug || "library").single();
+        if (error) throw error;
+        snapshot = data?.payload;
+      } else {
+        const response = await fetch(`/api/viewer/snapshot?at=${Date.now()}`, {cache: "no-store"});
+        if (!response.ok) throw new Error("로컬 열람 사본을 불러오지 못했습니다.");
+        snapshot = await response.json();
+      }
+      if (!snapshot || !Array.isArray(snapshot.projects) || !Array.isArray(snapshot.notes)) throw new Error("열람 데이터 형식이 올바르지 않습니다.");
+      try { localStorage.setItem("blue-brown-viewer-snapshot", JSON.stringify(snapshot)); } catch (_error) {}
+    } catch (error) {
+      try { snapshot = JSON.parse(localStorage.getItem("blue-brown-viewer-snapshot") || "null"); } catch (_error) {}
+      if (!snapshot) throw error;
+      showMessage("네트워크에 연결되지 않아 마지막 열람 사본을 표시합니다.", 4800);
+    }
+    state.snapshot = snapshot;
+    renderSnapshot();
+  }
+
+  async function showViewer() {
+    elements.auth.classList.add("hidden");
+    elements.shell.classList.remove("hidden");
+    elements.signOut.classList.toggle("hidden", !hasCloudConfig);
+    await loadSnapshot();
+    setLoading(true);
+  }
+
+  async function initialize() {
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    if (!hasCloudConfig) {
+      await showViewer();
+      return;
+    }
+    if (!window.supabase?.createClient) throw new Error("Supabase 열람 모듈을 불러오지 못했습니다.");
+    state.client = window.supabase.createClient(config.supabaseUrl, config.publishableKey);
+    const {data} = await state.client.auth.getSession();
+    if (data.session) await showViewer();
+    else {
+      elements.auth.classList.remove("hidden");
+      elements.shell.classList.add("hidden");
+      setLoading(true);
+    }
+  }
+
+  elements.authForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    elements.authStatus.textContent = "열람 링크를 보내고 있습니다.";
+    const {error} = await state.client.auth.signInWithOtp({email: elements.authEmail.value.trim(), options: {emailRedirectTo: location.href, shouldCreateUser: false}});
+    elements.authStatus.textContent = error ? `전송하지 못했습니다: ${error.message}` : "이메일에서 청갈색 서재 열람 링크를 열어주세요.";
+  });
+  elements.signOut.addEventListener("click", async () => { await state.client?.auth.signOut(); location.reload(); });
+  elements.refresh.addEventListener("click", async () => { await loadSnapshot(); showMessage("최신 열람 사본을 불러왔습니다."); });
+  elements.tabs.forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+  elements.projectSelect.addEventListener("change", () => selectProject(elements.projectSelect.value));
+  elements.projectList.addEventListener("click", event => { const button = event.target.closest("[data-project]"); if (button) selectProject(button.dataset.project); });
+  elements.fitBoard.addEventListener("click", () => fitBoard());
+  elements.expandNav.addEventListener("click", () => { state.allNavExpanded = !state.allNavExpanded; state.expandedNav.clear(); renderNav(); });
+  elements.noteSearch.addEventListener("input", renderNotes);
+  elements.readerBack.addEventListener("click", () => elements.readerPanel.classList.remove("open"));
+
+  [elements.boardStage, elements.navTree].forEach(container => container.addEventListener("click", event => {
+    const target = event.target.closest("[data-endpoint]");
+    if (target) openEndpoint(target.dataset.endpoint);
+  }));
+  [elements.noteList, elements.readerContent].forEach(container => container.addEventListener("click", event => {
+    const target = event.target.closest("[data-note-id]");
+    if (target) openNote(target.dataset.noteId);
+  }));
+  elements.navTree.addEventListener("click", event => {
+    const toggle = event.target.closest("[data-nav-toggle]");
+    if (!toggle) return;
+    const id = toggle.dataset.navToggle;
+    state.allNavExpanded = false;
+    if (state.expandedNav.has(id)) state.expandedNav.delete(id); else state.expandedNav.add(id);
+    renderNav();
+  });
+
+  elements.boardViewport.addEventListener("pointerdown", event => {
+    if (event.target.closest(".board-box")) return;
+    elements.boardViewport.setPointerCapture(event.pointerId);
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (state.pointers.size === 1) state.gesture = {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y};
+    if (state.pointers.size === 2) {
+      const [a, b] = [...state.pointers.values()];
+      const rect = elements.boardViewport.getBoundingClientRect();
+      state.gesture = {type: "pinch", distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: state.transform.zoom, x: state.transform.x, y: state.transform.y, centerX: (a.x + b.x) / 2 - rect.left, centerY: (a.y + b.y) / 2 - rect.top};
+    }
+    elements.boardViewport.classList.add("panning");
+  });
+  elements.boardViewport.addEventListener("pointermove", event => {
+    if (!state.pointers.has(event.pointerId)) return;
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (state.gesture?.type === "pan" && state.pointers.size === 1) {
+      state.transform.x = state.gesture.originX + event.clientX - state.gesture.x;
+      state.transform.y = state.gesture.originY + event.clientY - state.gesture.y;
+    } else if (state.gesture?.type === "pinch" && state.pointers.size >= 2) {
+      const [a, b] = [...state.pointers.values()];
+      const rect = elements.boardViewport.getBoundingClientRect();
+      const centerX = (a.x + b.x) / 2 - rect.left, centerY = (a.y + b.y) / 2 - rect.top;
+      const nextZoom = Math.max(0.25, Math.min(2.5, state.gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, state.gesture.distance)));
+      const worldX = (state.gesture.centerX - state.gesture.x) / state.gesture.zoom;
+      const worldY = (state.gesture.centerY - state.gesture.y) / state.gesture.zoom;
+      state.transform.zoom = nextZoom;
+      state.transform.x = centerX - worldX * nextZoom;
+      state.transform.y = centerY - worldY * nextZoom;
+    }
+    applyTransform();
+  });
+  const endPointer = event => {
+    state.pointers.delete(event.pointerId);
+    if (!state.pointers.size) { state.gesture = null; elements.boardViewport.classList.remove("panning"); }
+    else {
+      const pointer = [...state.pointers.values()][0];
+      state.gesture = {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y};
+    }
+  };
+  elements.boardViewport.addEventListener("pointerup", endPointer);
+  elements.boardViewport.addEventListener("pointercancel", endPointer);
+  elements.boardViewport.addEventListener("wheel", event => {
+    event.preventDefault();
+    const rect = elements.boardViewport.getBoundingClientRect();
+    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    const nextZoom = Math.max(0.25, Math.min(2.5, state.transform.zoom * Math.exp(-event.deltaY * 0.0015)));
+    const worldX = (x - state.transform.x) / state.transform.zoom, worldY = (y - state.transform.y) / state.transform.zoom;
+    state.transform.x = x - worldX * nextZoom; state.transform.y = y - worldY * nextZoom; state.transform.zoom = nextZoom;
+    applyTransform();
+  }, {passive: false});
+
+  window.addEventListener("resize", () => { if (state.view === "board") fitBoard(false); });
+  initialize().catch(error => {
+    setLoading(true);
+    elements.auth.classList.remove("hidden");
+    elements.authStatus.textContent = error.message || String(error);
+  });
+})();

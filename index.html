@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#352d2b">
+  <title>청갈색 서재 · 읽기</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.png">
+  <link rel="apple-touch-icon" href="./icon.png">
+  <link rel="stylesheet" href="./viewer.css">
+</head>
+<body>
+  <div class="viewer-loading" id="viewerLoading">
+    <img src="./icon.png" alt="">
+    <strong>청갈색 서재</strong>
+    <span>생각의 지도를 펼치고 있습니다.</span>
+  </div>
+
+  <main class="auth-screen hidden" id="authScreen">
+    <section class="auth-card">
+      <img src="./icon.png" alt="">
+      <h1>청갈색 서재</h1>
+      <p>등록된 이메일로 받은 링크를 열면 읽기 전용 서재가 펼쳐집니다.</p>
+      <form id="authForm">
+        <label for="authEmail">이메일</label>
+        <input id="authEmail" type="email" autocomplete="email" required>
+        <button type="submit">열람 링크 받기</button>
+      </form>
+      <p class="auth-status" id="authStatus"></p>
+    </section>
+  </main>
+
+  <main class="viewer-shell hidden" id="viewerShell">
+    <header class="viewer-header">
+      <div class="viewer-brand"><img src="./icon.png" alt=""><span><strong>청갈색 서재</strong><small>읽기 전용</small></span></div>
+      <label class="project-select-wrap"><span>프로젝트</span><select id="projectSelect"></select></label>
+      <nav class="view-tabs" aria-label="보기 방식">
+        <button class="active" type="button" data-view="board">보드</button>
+        <button type="button" data-view="nav">네비</button>
+        <button type="button" data-view="notes">메모</button>
+      </nav>
+      <div class="viewer-header-actions">
+        <span class="published-at" id="publishedAt"></span>
+        <button class="icon-button" id="refreshViewer" type="button" aria-label="새로고침" title="새로고침">↻</button>
+        <button class="text-button hidden" id="signOutViewer" type="button">나가기</button>
+      </div>
+    </header>
+
+    <div class="viewer-layout">
+      <aside class="project-panel">
+        <div class="panel-heading"><strong>프로젝트</strong><span id="projectCount"></span></div>
+        <div class="project-list" id="projectList"></div>
+      </aside>
+
+      <section class="workspace">
+        <div class="board-view" id="boardView">
+          <div class="board-toolbar">
+            <strong id="boardTitle"></strong>
+            <span>손가락으로 이동 · 핀치로 확대</span>
+            <button type="button" id="fitBoard">전체 보기</button>
+          </div>
+          <div class="board-viewport" id="boardViewport">
+            <div class="board-stage" id="boardStage"></div>
+          </div>
+        </div>
+
+        <div class="nav-view hidden" id="navView">
+          <div class="content-toolbar"><strong>네비</strong><button type="button" id="expandNav">모두 펴기</button></div>
+          <div class="nav-tree" id="navTree"></div>
+        </div>
+
+        <div class="notes-view hidden" id="notesView">
+          <div class="content-toolbar"><strong>메모</strong><input id="noteSearch" type="search" placeholder="메모와 출처 검색"></div>
+          <div class="note-list" id="noteList"></div>
+        </div>
+      </section>
+
+      <aside class="reader-panel" id="readerPanel">
+        <div class="panel-heading"><button class="reader-back" id="readerBack" type="button" aria-label="읽기 닫기">‹</button><strong id="readerHeading">열람</strong></div>
+        <article class="reader-content" id="readerContent"><div class="reader-empty">보드의 메모나 타이틀을 선택해 내용을 읽을 수 있습니다.</div></article>
+      </aside>
+    </div>
+    <div class="viewer-message hidden" id="viewerMessage"></div>
+  </main>
+
+  <script src="./vendor/supabase.min.js"></script>
+  <script src="./config.js"></script>
+  <script src="./viewer.js"></script>
+</body>
+</html>
