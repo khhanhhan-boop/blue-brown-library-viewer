@@ -3,7 +3,8 @@
 
   const $ = selector => document.querySelector(selector);
   const elements = {
-    loading: $("#viewerLoading"), auth: $("#authScreen"), authForm: $("#authForm"), authEmail: $("#authEmail"), authStatus: $("#authStatus"),
+    loading: $("#viewerLoading"), auth: $("#authScreen"), authForm: $("#authForm"), authEmail: $("#authEmail"),
+    authPassword: $("#authPassword"), authSubmit: $("#authSubmit"), authStatus: $("#authStatus"),
     shell: $("#viewerShell"), projectSelect: $("#projectSelect"), projectList: $("#projectList"), projectCount: $("#projectCount"),
     publishedAt: $("#publishedAt"), refresh: $("#refreshViewer"), signOut: $("#signOutViewer"), tabs: [...document.querySelectorAll("[data-view]")],
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
@@ -409,9 +410,17 @@
 
   elements.authForm.addEventListener("submit", async event => {
     event.preventDefault();
-    elements.authStatus.textContent = "열람 링크를 보내고 있습니다.";
-    const {error} = await state.client.auth.signInWithOtp({email: elements.authEmail.value.trim(), options: {emailRedirectTo: location.href, shouldCreateUser: false}});
-    elements.authStatus.textContent = error ? `전송하지 못했습니다: ${error.message}` : "이메일에서 청갈색 서재 열람 링크를 열어주세요.";
+    elements.authSubmit.disabled = true;
+    elements.authStatus.textContent = "서재를 열고 있습니다.";
+    const {error} = await state.client.auth.signInWithPassword({
+      email: elements.authEmail.value.trim(),
+      password: elements.authPassword.value,
+    });
+    if (error) {
+      elements.authStatus.textContent = "이메일 또는 비밀번호를 확인하세요.";
+      elements.authPassword.select();
+    } else await showViewer();
+    elements.authSubmit.disabled = false;
   });
   elements.signOut.addEventListener("click", async () => { await state.client?.auth.signOut(); location.reload(); });
   elements.refresh.addEventListener("click", async () => { await loadSnapshot(); showMessage("최신 열람 사본을 불러왔습니다."); });

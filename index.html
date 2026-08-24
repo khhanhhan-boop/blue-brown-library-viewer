@@ -21,11 +21,13 @@
     <section class="auth-card">
       <img src="./icon.png" alt="">
       <h1>청갈색 서재</h1>
-      <p>등록된 이메일로 받은 링크를 열면 읽기 전용 서재가 펼쳐집니다.</p>
+      <p>등록된 이메일과 앱 비밀번호로 읽기 전용 서재를 엽니다.</p>
       <form id="authForm">
         <label for="authEmail">이메일</label>
         <input id="authEmail" type="email" autocomplete="email" required>
-        <button type="submit">열람 링크 받기</button>
+        <label for="authPassword">비밀번호</label>
+        <input id="authPassword" type="password" autocomplete="current-password" required>
+        <button id="authSubmit" type="submit">서재 열기</button>
       </form>
       <p class="auth-status" id="authStatus"></p>
     </section>
