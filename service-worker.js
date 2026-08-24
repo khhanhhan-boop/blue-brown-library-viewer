@@ -1,4 +1,4 @@
-const CACHE_NAME = "blue-brown-viewer-v6";
+const CACHE_NAME = "blue-brown-viewer-v7";
 const APP_SHELL = ["./index.html", "./viewer.css", "./viewer.js", "./config.js", "./vendor/supabase.min.js", "./icon.png", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {

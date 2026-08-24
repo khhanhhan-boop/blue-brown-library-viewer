@@ -221,9 +221,11 @@
       if (edge.kind === "hierarchy") return `<line class="edge-hierarchy" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"></line>`;
       const geometry = relationGeometry(from, to, edge);
       const color = escapeHtml(edge.color || "#8a5962");
+      const fontSize = Math.max(9, Math.min(24, Math.round(Number(edge.fontSize) || 12)));
       const label = String(edge.label || "").split(/\r?\n/).filter(Boolean);
-      const text = label.length ? `<text class="edge-label" text-anchor="middle" x="${geometry.labelX}" y="${geometry.labelY - 9}">${label.map((line, index) => `<tspan x="${geometry.labelX}" dy="${index ? 15 : 0}">${escapeHtml(line)}</tspan>`).join("")}</text>` : "";
-      return `<g style="--edge-color:${color}"><path class="edge-relation" d="${geometry.path}"></path>${geometry.forward ? `<path class="edge-relation" d="${geometry.forward}" style="stroke-dasharray:none"></path>` : ""}${geometry.backward ? `<path class="edge-relation" d="${geometry.backward}" style="stroke-dasharray:none"></path>` : ""}${text}</g>`;
+      const text = label.length ? `<text class="edge-label" text-anchor="middle" x="${geometry.labelX}" y="${geometry.labelY - fontSize * 0.72}">${label.map((line, index) => `<tspan x="${geometry.labelX}" dy="${index ? fontSize * 1.22 : 0}">${escapeHtml(line)}</tspan>`).join("")}</text>` : "";
+      const arrowLayers = path => path ? `<path class="edge-arrow edge-arrow-halo" d="${path}"></path><path class="edge-arrow edge-arrow-core" d="${path}"></path>` : "";
+      return `<g class="edge-relation-group" style="--edge-color:${color};--edge-font-size:${fontSize}px"><path class="edge-relation relation-halo" d="${geometry.path}"></path><path class="edge-relation relation-core" d="${geometry.path}"></path>${arrowLayers(geometry.forward)}${arrowLayers(geometry.backward)}${text}</g>`;
     }).join("");
     const boxes = [...project.groups.map(data => ({kind: data.type === "text" ? "text" : "heading", data})), ...project.nodes.map(data => ({kind: "note", data}))].map(item => boxHtml(project, item)).join("");
     elements.boardStage.innerHTML = `<svg class="edge-layer" viewBox="0 0 2400 1600" aria-hidden="true">${edges}</svg>${boxes}`;
@@ -252,7 +254,12 @@
 
   function hierarchyChildren(project, endpoint) {
     const ids = project.edges.filter(edge => edge.kind === "hierarchy" && edge.from === endpoint).map(edge => edge.to);
-    return ids.map(id => endpointItem(project, id)).filter(Boolean).sort((a, b) => (Number(a.data.order) || 0) - (Number(b.data.order) || 0));
+    return ids.map(id => endpointItem(project, id)).filter(Boolean).sort((a, b) =>
+      (Number(a.data.order) || 0) - (Number(b.data.order) || 0)
+      || (Number(a.data.y) || 0) - (Number(b.data.y) || 0)
+      || (Number(a.data.x) || 0) - (Number(b.data.x) || 0)
+      || String(a.data.id).localeCompare(String(b.data.id))
+    );
   }
 
   function hierarchyRoots(project) {
@@ -260,6 +267,95 @@
     return [...project.groups.map(data => ({kind: data.type === "text" ? "text" : "heading", data})), ...project.nodes.map(data => ({kind: "note", data}))]
       .filter(item => !incoming.has(item.data.id))
       .sort((a, b) => (Number(a.data.order) || 0) - (Number(b.data.order) || 0));
+  }
+
+  function romanNumeral(value) {
+    const numerals = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+    let remaining = Math.max(1, Math.floor(Number(value) || 1));
+    let result = "";
+    numerals.forEach(([amount, numeral]) => {
+      while (remaining >= amount) {
+        result += numeral;
+        remaining -= amount;
+      }
+    });
+    return result;
+  }
+
+  function outlineRows(project) {
+    const rows = [];
+    const visited = new Set();
+    const items = [...project.groups.map(data => ({id: data.id, kind: data.type === "text" ? "text" : "heading", data})), ...project.nodes.map(data => ({id: data.id, kind: "note", data}))];
+    const byId = new Map(items.map(item => [item.id, item]));
+    const adjacency = new Map(items.map(item => [item.id, []]));
+    const incoming = new Map(items.map(item => [item.id, 0]));
+    project.edges.filter(edge => edge.kind === "hierarchy").forEach(edge => {
+      if (!byId.has(edge.from) || !byId.has(edge.to) || edge.from === edge.to) return;
+      adjacency.get(edge.from).push(edge.to);
+      incoming.set(edge.to, (incoming.get(edge.to) || 0) + 1);
+    });
+    const sortIds = ids => [...ids].sort((leftId, rightId) => {
+      const left = byId.get(leftId), right = byId.get(rightId);
+      return (Number(left?.data.order) || 0) - (Number(right?.data.order) || 0)
+        || (Number(left?.data.y) || 0) - (Number(right?.data.y) || 0)
+        || (Number(left?.data.x) || 0) - (Number(right?.data.x) || 0)
+        || String(leftId).localeCompare(String(rightId));
+    });
+    const walkBranch = (endpoint, treeDepth, contentDepth, unassigned) => {
+      sortIds(adjacency.get(endpoint) || []).forEach(neighborId => {
+        if (visited.has(neighborId)) return;
+        const neighbor = byId.get(neighborId);
+        if (!neighbor) return;
+        const nextContentDepth = neighbor.kind === "heading" ? 0 : (byId.get(endpoint)?.kind === "heading" ? 0 : contentDepth + 1);
+        visited.add(neighborId);
+        rows.push({item: neighbor, depth: treeDepth + 1, contentDepth: nextContentDepth, parentId: endpoint, unassigned});
+        walkBranch(neighborId, treeDepth + 1, nextContentDepth, unassigned);
+      });
+    };
+    const rootSort = (a, b) => (a.kind === "heading" ? 0 : 1) - (b.kind === "heading" ? 0 : 1)
+      || (Number(a.data.headingLevel) || 2) - (Number(b.data.headingLevel) || 2)
+      || (Number(a.data.y) || 0) - (Number(b.data.y) || 0)
+      || (Number(a.data.x) || 0) - (Number(b.data.x) || 0);
+    const addRoot = (item, unassigned) => {
+      if (!item || visited.has(item.id)) return;
+      visited.add(item.id);
+      rows.push({item, depth: 0, contentDepth: 0, parentId: "", unassigned});
+      walkBranch(item.id, 0, 0, unassigned);
+    };
+    items.filter(item => item.kind === "heading" && (Number(item.data.headingLevel) === 1 || !(incoming.get(item.id) || 0))).sort(rootSort).forEach(item => addRoot(item, false));
+    items.filter(item => !(incoming.get(item.id) || 0)).sort(rootSort).forEach(item => addRoot(item, item.kind !== "heading"));
+    items.filter(item => item.kind === "heading").sort(rootSort).forEach(item => addRoot(item, false));
+    items.filter(item => !visited.has(item.id)).sort(rootSort).forEach(item => addRoot(item, true));
+    return rows;
+  }
+
+  function outlineNumbering(rows) {
+    const counters = new Map();
+    const numbering = new Map();
+    rows.forEach(row => {
+      const parentNumbering = row.parentId ? numbering.get(row.parentId) : null;
+      let tier = null;
+      let counterKey = "";
+      if (parentNumbering?.inBranch) {
+        tier = parentNumbering.tier + 1;
+        counterKey = `children:${row.parentId}:${tier}`;
+      } else if (row.item.kind === "heading") {
+        tier = Math.max(0, Math.min(3, (Number(row.item.data.headingLevel) || 2) - 1));
+        counterKey = `roots:${row.parentId || "project"}:${tier}`;
+      }
+      if (tier === null) {
+        numbering.set(row.item.id, {inBranch: false, tier: null, label: ""});
+        return;
+      }
+      let label = "";
+      if (tier <= 2) {
+        const index = (counters.get(counterKey) || 0) + 1;
+        counters.set(counterKey, index);
+        label = tier === 0 ? `${romanNumeral(index)}.` : tier === 1 ? `${index}.` : `${index})`;
+      }
+      numbering.set(row.item.id, {inBranch: true, tier, label});
+    });
+    return numbering;
   }
 
   function itemTitle(project, item) {
@@ -310,21 +406,23 @@
     openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(textParts(display.body).body || display.body)}</div>`);
   }
 
-  function branchHtml(project, item, depth, visited) {
+  function branchHtml(project, item, depth, visited, numbering) {
     if (visited.has(item.data.id)) return "";
     visited.add(item.data.id);
+    const number = numbering.get(item.data.id)?.label || "";
+    const numberedTitle = value => `${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${value}</span>`;
     let content = "";
     if (item.kind === "heading") {
       const level = Math.max(2, Math.min(4, Number(item.data.headingLevel) + 1));
-      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h${level}>${inlineMarkdown(item.data.title)}</h${level}>`;
+      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h${level} class="branch-heading ${number ? "numbered" : ""}">${numberedTitle(inlineMarkdown(item.data.title))}</h${level}>`;
     } else if (item.kind === "text") {
       const parts = textParts(item.data.body || item.data.title);
-      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h4>${inlineMarkdown(parts.title)}</h4>${parts.body ? `<div class="markdown">${markdown(parts.body)}</div>` : ""}`;
+      content = `<section class="branch-section" style="--depth:${Math.min(depth, 5)}"><h4 class="branch-item-title ${number ? "numbered" : ""}">${numberedTitle(inlineMarkdown(parts.title))}</h4>${parts.body ? `<div class="markdown">${markdown(parts.body)}</div>` : ""}`;
     } else {
       const display = noteDisplay(project, item.data.noteId);
-      content = `<section class="branch-section branch-note" style="--depth:${Math.min(depth, 5)}"><button type="button" data-note-id="${escapeHtml(item.data.noteId)}">${escapeHtml(display.title)}</button><p>${escapeHtml(textParts(display.body).body || display.body)}</p>`;
+      content = `<section class="branch-section branch-note" style="--depth:${Math.min(depth, 5)}"><button class="branch-item-title ${number ? "numbered" : ""}" type="button" data-note-id="${escapeHtml(item.data.noteId)}">${numberedTitle(escapeHtml(display.title))}</button><p>${escapeHtml(textParts(display.body).body || display.body)}</p>`;
     }
-    content += hierarchyChildren(project, item.data.id).map(child => branchHtml(project, child, depth + 1, visited)).join("");
+    content += hierarchyChildren(project, item.data.id).map(child => branchHtml(project, child, depth + 1, visited, numbering)).join("");
     return `${content}</section>`;
   }
 
@@ -338,9 +436,11 @@
     if (item.kind === "note") openNote(item.data.noteId);
     else if (item.kind === "text") {
       const parts = textParts(item.data.body || item.data.title);
-      openReader("글", `<h1 class="reader-title">${inlineMarkdown(parts.title)}</h1><div class="markdown">${markdown(parts.body)}</div>`);
+      const number = outlineNumbering(outlineRows(project)).get(item.data.id)?.label || "";
+      openReader("글", `<h1 class="reader-title ${number ? "numbered" : ""}">${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${inlineMarkdown(parts.title)}</span></h1><div class="markdown">${markdown(parts.body)}</div>`);
     } else {
-      openReader("하위 글", branchHtml(project, item, 0, new Set()));
+      const numbering = outlineNumbering(outlineRows(project));
+      openReader("하위 글", branchHtml(project, item, 0, new Set(), numbering));
     }
   }
 
