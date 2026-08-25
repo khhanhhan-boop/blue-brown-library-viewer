@@ -133,7 +133,7 @@
   }
 
   function projectNoteIds(project) {
-    return new Set([...Object.keys(project?.members || {}), ...(project?.nodes || []).map(node => node.noteId)]);
+    return new Set((project?.nodes || []).map(node => node.noteId).filter(Boolean));
   }
 
   function renderProjects() {
