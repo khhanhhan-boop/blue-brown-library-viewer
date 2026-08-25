@@ -96,6 +96,7 @@ button { cursor: pointer; }
 .board-box.text { background: color-mix(in srgb, var(--box-color) 8%, #fffaf0); }
 .board-box.heading { border-color: color-mix(in srgb, var(--box-color) 72%, #211a19); background: color-mix(in srgb, var(--box-color) 62%, #2a2020); color: #fff9ec; }
 .board-box:hover, .board-box.selected { z-index: 3; border-color: color-mix(in srgb, var(--box-color) 72%, #fffaf0); box-shadow: 0 0 0 3px color-mix(in srgb, var(--box-color) 24%, transparent), 0 12px 26px rgba(58, 42, 37, 0.2); }
+.board-box.long-pressing { z-index: 5; animation: board-long-press 480ms cubic-bezier(0.2, 0.75, 0.2, 1) both; }
 .board-box button { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; padding: 11px 12px 12px; border: 0; background: transparent; color: inherit; text-align: left; }
 .board-box.heading button { display: grid; place-items: center; padding: 8px; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
 .board-box.text button { padding: 5px 7px 13px; }
@@ -234,6 +235,10 @@ button { cursor: pointer; }
 
 @keyframes reader-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 @keyframes ancestor-sheet-in { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+@keyframes board-long-press {
+  from { transform: translate(-50%, -50%) scale(1); border-color: color-mix(in srgb, var(--box-color) 48%, rgba(76, 57, 51, 0.28)); box-shadow: 0 8px 18px rgba(57, 42, 37, 0.12), inset 0 0 0 1px rgba(255,255,255,0.44); filter: brightness(1); }
+  to { transform: translate(-50%, -50%) scale(1.025); border-color: color-mix(in srgb, var(--box-color) 82%, #fff9dd); box-shadow: 0 0 0 4px color-mix(in srgb, var(--box-color) 30%, transparent), 0 15px 30px rgba(58, 42, 37, 0.24), inset 0 0 0 1px rgba(255,255,255,0.72); filter: brightness(1.06); }
+}
 @keyframes context-target-pulse { 0%, 100% { background: color-mix(in srgb, var(--wine) 7%, transparent); } 50% { background: color-mix(in srgb, var(--wine) 18%, transparent); } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

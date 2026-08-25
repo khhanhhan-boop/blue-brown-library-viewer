@@ -701,6 +701,21 @@
   function clearLongPress() {
     window.clearTimeout(state.longPressTimer);
     state.longPressTimer = 0;
+    elements.boardStage.querySelectorAll(".long-pressing").forEach(element => element.classList.remove("long-pressing"));
+  }
+
+  function resetPointerGesture(releaseCapture = false) {
+    clearLongPress();
+    const pointerIds = [...state.pointers.keys()];
+    state.pointers.clear();
+    state.gesture = null;
+    elements.boardViewport.classList.remove("panning");
+    if (!releaseCapture) return;
+    pointerIds.forEach(pointerId => {
+      try {
+        if (elements.boardViewport.hasPointerCapture(pointerId)) elements.boardViewport.releasePointerCapture(pointerId);
+      } catch (_error) {}
+    });
   }
 
   function selectProject(projectId, fit = true) {
@@ -868,6 +883,7 @@
       : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false, lastX: event.clientX, lastY: event.clientY, lastTime: event.timeStamp, velocityX: 0, velocityY: 0};
     if (state.pointers.size === 1 && event.pointerType === "touch" && endpointItem(currentProject(), endpoint)?.kind === "note") {
       clearLongPress();
+      event.target.closest(".board-box")?.classList.add("long-pressing");
       state.longPressTimer = window.setTimeout(() => {
         if (state.pointers.size !== 1 || state.gesture?.type !== "pending") return;
         state.gesture.type = "longpress";
@@ -875,8 +891,9 @@
         state.lastTap = null;
         window.clearTimeout(state.pendingTapTimer);
         state.pendingTapTimer = 0;
-        showAncestorSheet(endpoint);
         state.longPressTimer = 0;
+        resetPointerGesture(true);
+        showAncestorSheet(endpoint);
       }, 480);
     }
     if (state.pointers.size === 2) {
@@ -976,6 +993,11 @@
   };
   elements.boardViewport.addEventListener("pointerup", endPointer);
   elements.boardViewport.addEventListener("pointercancel", endPointer);
+  elements.boardViewport.addEventListener("lostpointercapture", event => {
+    if (!state.pointers.has(event.pointerId)) return;
+    state.pointers.delete(event.pointerId);
+    if (!state.pointers.size) resetPointerGesture(false);
+  });
   window.addEventListener("keydown", event => { if (event.key === "Escape" && !elements.ancestorSheet.classList.contains("hidden")) closeAncestorSheet(); });
   elements.boardViewport.addEventListener("wheel", event => {
     event.preventDefault();
