@@ -10,7 +10,7 @@
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
     boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), fitBoard: $("#fitBoard"), navTree: $("#navTree"), expandNav: $("#expandNav"),
     noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
-    readerContent: $("#readerContent"), readerBack: $("#readerBack"), message: $("#viewerMessage"),
+    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
   const hasCloudConfig = /^https:\/\//.test(config.supabaseUrl || "") && Boolean(config.publishableKey);
@@ -25,6 +25,7 @@
     expandedNav: new Set(),
     allNavExpanded: true,
     collapsedNoteSources: new Set(),
+    readerCopyText: "",
     client: null,
   };
 
@@ -115,6 +116,23 @@
     elements.message.classList.remove("hidden");
     window.clearTimeout(showMessage.timer);
     showMessage.timer = window.setTimeout(() => elements.message.classList.add("hidden"), timeout);
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    if (!copied) throw new Error("Clipboard API unavailable");
   }
 
   function setLoading(done) {
@@ -426,17 +444,22 @@
     }).join("") || `<div class="reader-empty">표시할 메모가 없습니다.</div>`;
   }
 
-  function openReader(title, html) {
+  function openReader(title, html, copyValue = "") {
     elements.readerHeading.textContent = title;
     elements.readerContent.innerHTML = html;
     elements.readerContent.scrollTop = 0;
+    state.readerCopyText = String(copyValue || "").trim();
+    elements.readerCopy.classList.toggle("hidden", !state.readerCopyText);
     elements.readerPanel.classList.add("open");
   }
 
   function openNote(noteId) {
     const project = currentProject();
     const display = noteDisplay(project, noteId);
-    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(textParts(display.body).body || display.body)}</div>`);
+    const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+    const body = textParts(display.body).body || display.body;
+    const copyValue = [`# ${display.title}`, source ? `> 출처: ${source}` : "", body].filter(Boolean).join("\n\n");
+    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(body)}</div>`, copyValue);
   }
 
   function branchRows(project, rootId) {
@@ -479,6 +502,28 @@
     return `<div class="branch-preview">${html}</div>`;
   }
 
+  function branchMarkdown(project, rows) {
+    const numbering = outlineNumbering(outlineRows(project));
+    return rows.flatMap(row => {
+      const item = row.item;
+      const number = numbering.get(item.id)?.label || "";
+      const prefix = number ? `${number} ` : "";
+      if (item.kind === "heading") {
+        const level = Math.max(1, Math.min(6, Number(item.data.headingLevel) || 2));
+        const title = String(item.data.title || "새 제목").replace(/\s+/g, " ").trim();
+        return `${"#".repeat(level)} ${prefix}${title}`;
+      }
+      if (item.kind === "text") {
+        const parts = textParts(item.data.body || item.data.title);
+        return [`**${prefix}${parts.title}**`, parts.body].filter(Boolean).join("\n\n");
+      }
+      const display = noteDisplay(project, item.data.noteId);
+      const body = textParts(display.body).body || display.body;
+      const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+      return [`**${prefix}${display.title}**`, body, source ? `> 출처: ${source}` : ""].filter(Boolean).join("\n\n");
+    }).join("\n\n");
+  }
+
   function openEndpoint(endpoint) {
     const project = currentProject();
     const item = endpointItem(project, endpoint);
@@ -490,9 +535,11 @@
     else if (item.kind === "text") {
       const parts = textParts(item.data.body || item.data.title);
       const number = outlineNumbering(outlineRows(project)).get(item.data.id)?.label || "";
-      openReader("글", `<h1 class="reader-title ${number ? "numbered" : ""}">${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${inlineMarkdown(parts.title)}</span></h1><div class="markdown">${markdown(parts.body)}</div>`);
+      const copyValue = [`# ${number ? `${number} ` : ""}${parts.title}`, parts.body].filter(Boolean).join("\n\n");
+      openReader("글", `<h1 class="reader-title ${number ? "numbered" : ""}">${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${inlineMarkdown(parts.title)}</span></h1><div class="markdown">${markdown(parts.body)}</div>`, copyValue);
     } else {
-      openReader("하위 글", branchHtml(project, branchRows(project, item.data.id)));
+      const rows = branchRows(project, item.data.id);
+      openReader("하위 글", branchHtml(project, rows), branchMarkdown(project, rows));
     }
   }
 
@@ -501,6 +548,8 @@
     state.projectId = projectId;
     state.selectedEndpoint = "";
     elements.readerPanel.classList.remove("open");
+    state.readerCopyText = "";
+    elements.readerCopy.classList.add("hidden");
     renderProjects(); renderBoard(); renderNav(); renderNotes();
     if (fit) window.requestAnimationFrame(() => fitBoard(false));
     try { localStorage.setItem("blue-brown-viewer-project", projectId); } catch (_error) {}
@@ -596,7 +645,20 @@
     });
     renderNotes();
   });
-  elements.readerBack.addEventListener("click", () => elements.readerPanel.classList.remove("open"));
+  elements.readerBack.addEventListener("click", () => {
+    elements.readerPanel.classList.remove("open");
+    state.readerCopyText = "";
+    elements.readerCopy.classList.add("hidden");
+  });
+  elements.readerCopy.addEventListener("click", async () => {
+    if (!state.readerCopyText) return;
+    try {
+      await copyText(state.readerCopyText);
+      showMessage("현재 미리보기를 복사했습니다.");
+    } catch (_error) {
+      showMessage("복사하지 못했습니다.");
+    }
+  });
 
   [elements.boardStage, elements.navTree].forEach(container => container.addEventListener("click", event => {
     const target = event.target.closest("[data-endpoint]");

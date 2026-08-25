@@ -141,6 +141,8 @@ button { cursor: pointer; }
 .note-list-item p { display: -webkit-box; overflow: hidden; margin: 0; color: #5c504b; font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .reader-back { display: none; width: 29px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 20px; }
+.reader-copy { height: 28px; margin-left: auto; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--wine) 35%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--wine) 9%, #fffdf8); color: var(--wine); font-size: 10px; font-weight: 850; }
+.reader-copy:hover, .reader-copy:focus-visible { border-color: color-mix(in srgb, var(--wine) 58%, transparent); background: color-mix(in srgb, var(--wine) 15%, #fffdf8); }
 .reader-content { padding: 18px 19px 50px; background: rgba(252, 248, 239, 0.72); }
 .reader-empty { padding: 28px 14px; color: var(--muted); font-size: 12px; line-height: 1.65; text-align: center; }
 .reader-title { margin: 0 0 7px; font-family: Georgia, "Noto Serif KR", serif; font-size: 23px; line-height: 1.38; overflow-wrap: anywhere; }
