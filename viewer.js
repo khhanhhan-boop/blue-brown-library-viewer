@@ -9,7 +9,7 @@
     publishedAt: $("#publishedAt"), refresh: $("#refreshViewer"), signOut: $("#signOutViewer"), tabs: [...document.querySelectorAll("[data-view]")],
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
     boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), fitBoard: $("#fitBoard"), navTree: $("#navTree"), expandNav: $("#expandNav"),
-    noteSearch: $("#noteSearch"), noteList: $("#noteList"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
+    noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
     readerContent: $("#readerContent"), readerBack: $("#readerBack"), message: $("#viewerMessage"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
@@ -24,6 +24,7 @@
     gesture: null,
     expandedNav: new Set(),
     allNavExpanded: true,
+    collapsedNoteSources: new Set(),
     client: null,
   };
 
@@ -385,12 +386,44 @@
     return (state.snapshot?.notes || []).filter(note => ids.has(note.id)).sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
   }
 
+  function noteSourceKey(note) {
+    return note.sourceId ? `id:${note.sourceId}` : `meta:${note.paperTitle || "출처 정보 없음"}\u241f${note.paperAuthor || ""}`;
+  }
+
+  function noteSourceStateKey(project, sourceKey) {
+    return `${project.id}\u241e${sourceKey}`;
+  }
+
+  function noteSourceGroups(notes) {
+    const groups = new Map();
+    notes.forEach(note => {
+      const key = noteSourceKey(note);
+      if (!groups.has(key)) groups.set(key, {
+        key,
+        title: note.paperTitle || "출처 정보 없음",
+        author: note.paperAuthor || "",
+        notes: [],
+      });
+      groups.get(key).notes.push(note);
+    });
+    return [...groups.values()];
+  }
+
   function renderNotes() {
     const project = currentProject();
     if (!project) { elements.noteList.innerHTML = ""; return; }
     const query = elements.noteSearch.value.trim().toLocaleLowerCase();
     const notes = projectNotes(project).filter(note => !query || [note.title, note.body, note.paperTitle, note.paperAuthor].join(" ").toLocaleLowerCase().includes(query));
-    elements.noteList.innerHTML = notes.map(note => `<button class="note-list-item" type="button" data-note-id="${escapeHtml(note.id)}"><strong>${escapeHtml(note.title)}</strong><span>${escapeHtml(note.paperTitle)}${note.paperAuthor ? ` · ${escapeHtml(note.paperAuthor)}` : ""}</span><p>${escapeHtml(textParts(note.body).body || note.body)}</p></button>`).join("") || `<div class="reader-empty">표시할 메모가 없습니다.</div>`;
+    const groups = noteSourceGroups(notes);
+    const collapsedCount = groups.filter(group => state.collapsedNoteSources.has(noteSourceStateKey(project, group.key))).length;
+    elements.toggleNoteSources.textContent = groups.length > 0 && collapsedCount === groups.length ? "모두 펴기" : "모두 접기";
+    elements.toggleNoteSources.disabled = groups.length === 0;
+    elements.noteList.innerHTML = groups.map(group => {
+      const stateKey = noteSourceStateKey(project, group.key);
+      const collapsed = state.collapsedNoteSources.has(stateKey);
+      const items = collapsed ? "" : group.notes.map(note => `<button class="note-list-item" type="button" data-note-id="${escapeHtml(note.id)}"><strong>${escapeHtml(note.title)}</strong><p>${escapeHtml(textParts(note.body).body || note.body)}</p></button>`).join("");
+      return `<section class="note-source-group ${collapsed ? "collapsed" : ""}"><button class="note-source-heading" type="button" data-note-source-toggle="${escapeHtml(group.key)}" aria-expanded="${collapsed ? "false" : "true"}"><span class="note-source-chevron">${collapsed ? "▸" : "▾"}</span><span class="note-source-label"><strong>${escapeHtml(group.title)}</strong>${group.author ? `<small>${escapeHtml(group.author)}</small>` : ""}</span><span class="note-source-count">${group.notes.length}</span></button><div class="note-source-items">${items}</div></section>`;
+    }).join("") || `<div class="reader-empty">표시할 메모가 없습니다.</div>`;
   }
 
   function openReader(title, html) {
@@ -551,6 +584,18 @@
   elements.fitBoard.addEventListener("click", () => fitBoard());
   elements.expandNav.addEventListener("click", () => { state.allNavExpanded = !state.allNavExpanded; state.expandedNav.clear(); renderNav(); });
   elements.noteSearch.addEventListener("input", renderNotes);
+  elements.toggleNoteSources.addEventListener("click", () => {
+    const project = currentProject();
+    if (!project) return;
+    const query = elements.noteSearch.value.trim().toLocaleLowerCase();
+    const groups = noteSourceGroups(projectNotes(project).filter(note => !query || [note.title, note.body, note.paperTitle, note.paperAuthor].join(" ").toLocaleLowerCase().includes(query)));
+    const shouldExpand = groups.length > 0 && groups.every(group => state.collapsedNoteSources.has(noteSourceStateKey(project, group.key)));
+    groups.forEach(group => {
+      const key = noteSourceStateKey(project, group.key);
+      if (shouldExpand) state.collapsedNoteSources.delete(key); else state.collapsedNoteSources.add(key);
+    });
+    renderNotes();
+  });
   elements.readerBack.addEventListener("click", () => elements.readerPanel.classList.remove("open"));
 
   [elements.boardStage, elements.navTree].forEach(container => container.addEventListener("click", event => {
@@ -561,6 +606,15 @@
     const target = event.target.closest("[data-note-id]");
     if (target) openNote(target.dataset.noteId);
   }));
+  elements.noteList.addEventListener("click", event => {
+    const toggle = event.target.closest("[data-note-source-toggle]");
+    if (!toggle) return;
+    const project = currentProject();
+    if (!project) return;
+    const key = noteSourceStateKey(project, toggle.dataset.noteSourceToggle);
+    if (state.collapsedNoteSources.has(key)) state.collapsedNoteSources.delete(key); else state.collapsedNoteSources.add(key);
+    renderNotes();
+  });
   elements.navTree.addEventListener("click", event => {
     const toggle = event.target.closest("[data-nav-toggle]");
     if (!toggle) return;
