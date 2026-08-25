@@ -8,7 +8,7 @@
     shell: $("#viewerShell"), projectSelect: $("#projectSelect"), projectList: $("#projectList"), projectCount: $("#projectCount"),
     publishedAt: $("#publishedAt"), refresh: $("#refreshViewer"), signOut: $("#signOutViewer"), tabs: [...document.querySelectorAll("[data-view]")],
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
-    boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), fitBoard: $("#fitBoard"), navTree: $("#navTree"), expandNav: $("#expandNav"),
+    boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
     noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
     readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
   };
@@ -717,7 +717,6 @@
   elements.tabs.forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
   elements.projectSelect.addEventListener("change", () => selectProject(elements.projectSelect.value));
   elements.projectList.addEventListener("click", event => { const button = event.target.closest("[data-project]"); if (button) selectProject(button.dataset.project); });
-  elements.fitBoard.addEventListener("click", () => fitBoard());
   elements.expandNav.addEventListener("click", () => { state.allNavExpanded = !state.allNavExpanded; state.expandedNav.clear(); renderNav(); });
   elements.noteSearch.addEventListener("input", renderNotes);
   elements.toggleNoteSources.addEventListener("click", () => {

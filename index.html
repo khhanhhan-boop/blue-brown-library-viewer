@@ -36,7 +36,7 @@
   <main class="viewer-shell hidden" id="viewerShell">
     <header class="viewer-header">
       <div class="viewer-brand"><img src="./icon.png" alt=""><span><strong>청갈색 서재</strong><small>읽기 전용</small></span></div>
-      <label class="project-select-wrap"><span>프로젝트</span><select id="projectSelect"></select></label>
+      <label class="project-select-wrap"><span>현재 프로젝트</span><select id="projectSelect" aria-label="현재 프로젝트 선택"></select></label>
       <nav class="view-tabs" aria-label="보기 방식">
         <button class="active" type="button" data-view="board">보드</button>
         <button type="button" data-view="nav">네비</button>
@@ -60,7 +60,6 @@
           <div class="board-toolbar">
             <strong id="boardTitle"></strong>
             <span>손가락으로 이동 · 핀치로 확대</span>
-            <button type="button" id="fitBoard">전체 보기</button>
           </div>
           <div class="board-viewport" id="boardViewport">
             <div class="board-stage" id="boardStage"></div>
