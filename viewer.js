@@ -25,7 +25,8 @@
     lastTap: null,
     pendingTapTimer: 0,
     suppressBoardClickUntil: 0,
-    transformTimer: 0,
+    transformFrame: 0,
+    inertiaFrame: 0,
     expandedNav: new Set(),
     allNavExpanded: true,
     collapsedNoteSources: new Set(),
@@ -257,52 +258,104 @@
   }
 
   function applyTransform() {
-    elements.boardStage.style.transform = `translate(${state.transform.x}px, ${state.transform.y}px) scale(${state.transform.zoom})`;
+    elements.boardStage.style.transform = `translate3d(${state.transform.x}px, ${state.transform.y}px, 0) scale(${state.transform.zoom})`;
+  }
+
+  function stopInertia() {
+    window.cancelAnimationFrame(state.inertiaFrame);
+    state.inertiaFrame = 0;
   }
 
   function stopTransformAnimation() {
-    window.clearTimeout(state.transformTimer);
-    state.transformTimer = 0;
-    elements.boardStage.style.transition = "none";
+    window.cancelAnimationFrame(state.transformFrame);
+    state.transformFrame = 0;
+    stopInertia();
   }
 
-  function animateZoomAt(clientX, clientY, factor = 1.45) {
-    const rect = elements.boardViewport.getBoundingClientRect();
-    const x = clientX - rect.left, y = clientY - rect.top;
-    const currentZoom = state.transform.zoom;
-    const nextZoom = Math.max(0.25, Math.min(2.5, currentZoom * factor));
-    if (Math.abs(nextZoom - currentZoom) < 0.001) return;
-    const worldX = (x - state.transform.x) / currentZoom;
-    const worldY = (y - state.transform.y) / currentZoom;
-    window.clearTimeout(state.transformTimer);
-    elements.boardStage.style.transition = "transform 240ms cubic-bezier(0.2, 0.72, 0.18, 1)";
-    state.transform.x = x - worldX * nextZoom;
-    state.transform.y = y - worldY * nextZoom;
-    state.transform.zoom = nextZoom;
-    applyTransform();
-    state.transformTimer = window.setTimeout(() => {
-      elements.boardStage.style.transition = "";
-      state.transformTimer = 0;
-    }, 270);
+  function animateTransformTo(target, duration = 280) {
+    stopTransformAnimation();
+    const origin = {...state.transform};
+    const startedAt = performance.now();
+    const step = now => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+      state.transform.x = origin.x + (target.x - origin.x) * eased;
+      state.transform.y = origin.y + (target.y - origin.y) * eased;
+      state.transform.zoom = origin.zoom + (target.zoom - origin.zoom) * eased;
+      applyTransform();
+      if (progress < 1) state.transformFrame = window.requestAnimationFrame(step);
+      else state.transformFrame = 0;
+    };
+    state.transformFrame = window.requestAnimationFrame(step);
   }
 
-  function fitBoard(animate = true) {
+  function boardFitTransform() {
     const project = currentProject();
     const items = project ? [...project.nodes, ...project.groups] : [];
-    if (!items.length || !elements.boardViewport.clientWidth) return;
+    if (!items.length || !elements.boardViewport.clientWidth) return null;
     const minX = Math.min(...items.map(item => item.x - item.width / 2)) - 90;
     const maxX = Math.max(...items.map(item => item.x + item.width / 2)) + 90;
     const minY = Math.min(...items.map(item => item.y - item.height / 2)) - 90;
     const maxY = Math.max(...items.map(item => item.y + item.height / 2)) + 90;
     const zoom = Math.max(0.28, Math.min(1.35, Math.min(elements.boardViewport.clientWidth / Math.max(1, maxX - minX), elements.boardViewport.clientHeight / Math.max(1, maxY - minY))));
-    state.transform = {x: (elements.boardViewport.clientWidth - (minX + maxX) * zoom) / 2, y: (elements.boardViewport.clientHeight - (minY + maxY) * zoom) / 2, zoom};
-    window.clearTimeout(state.transformTimer);
-    elements.boardStage.style.transition = animate ? "transform 280ms ease" : "none";
-    applyTransform();
-    state.transformTimer = window.setTimeout(() => {
-      elements.boardStage.style.transition = "";
-      state.transformTimer = 0;
-    }, 300);
+    return {x: (elements.boardViewport.clientWidth - (minX + maxX) * zoom) / 2, y: (elements.boardViewport.clientHeight - (minY + maxY) * zoom) / 2, zoom};
+  }
+
+  function doubleTapZoom() {
+    const fit = boardFitTransform();
+    const selected = state.lastTap?.endpoint ? elements.boardStage.querySelector(`[data-endpoint="${CSS.escape(state.lastTap.endpoint)}"]`) : null;
+    const reference = selected?.classList.contains("compact") ? selected : elements.boardStage.querySelector(".board-box.compact") || selected;
+    const referenceWidth = Math.max(180, Math.min(360, reference?.offsetWidth || 280));
+    const referenceHeight = Math.max(56, Math.min(92, reference?.offsetHeight || 76));
+    const viewportArea = Math.max(1, elements.boardViewport.clientWidth * elements.boardViewport.clientHeight);
+    const focusZoom = Math.max(fit?.zoom || 0.28, Math.min(2.5, Math.sqrt(viewportArea / (15 * referenceWidth * referenceHeight))));
+    return {fit, focusZoom};
+  }
+
+  function animateZoomAt(clientX, clientY) {
+    const rect = elements.boardViewport.getBoundingClientRect();
+    const x = clientX - rect.left, y = clientY - rect.top;
+    const currentZoom = state.transform.zoom;
+    const {focusZoom: nextZoom} = doubleTapZoom();
+    if (Math.abs(nextZoom - currentZoom) < 0.001) return;
+    const worldX = (x - state.transform.x) / currentZoom;
+    const worldY = (y - state.transform.y) / currentZoom;
+    animateTransformTo({x: x - worldX * nextZoom, y: y - worldY * nextZoom, zoom: nextZoom}, 290);
+  }
+
+  function handleDoubleTap(clientX, clientY) {
+    const {fit, focusZoom} = doubleTapZoom();
+    if (fit && state.transform.zoom >= focusZoom * 0.86) fitBoard();
+    else animateZoomAt(clientX, clientY);
+  }
+
+  function startInertia(velocityX, velocityY) {
+    stopInertia();
+    let lastTime = performance.now();
+    const step = now => {
+      const elapsed = Math.min(34, now - lastTime);
+      lastTime = now;
+      state.transform.x += velocityX * elapsed;
+      state.transform.y += velocityY * elapsed;
+      const decay = Math.pow(0.94, elapsed / 16.667);
+      velocityX *= decay;
+      velocityY *= decay;
+      applyTransform();
+      if (Math.hypot(velocityX, velocityY) > 0.025) state.inertiaFrame = window.requestAnimationFrame(step);
+      else state.inertiaFrame = 0;
+    };
+    if (Math.hypot(velocityX, velocityY) > 0.08) state.inertiaFrame = window.requestAnimationFrame(step);
+  }
+
+  function fitBoard(animate = true) {
+    const target = boardFitTransform();
+    if (!target) return;
+    if (animate) animateTransformTo(target, 300);
+    else {
+      stopTransformAnimation();
+      state.transform = target;
+      applyTransform();
+    }
   }
 
   function hierarchyChildren(project, endpoint) {
@@ -734,8 +787,8 @@
     elements.boardViewport.setPointerCapture(event.pointerId);
     state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox, endpoint, pointerType: event.pointerType});
     if (state.pointers.size === 1) state.gesture = (overBox || event.pointerType === "touch")
-      ? {type: "pending", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false}
-      : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false};
+      ? {type: "pending", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false, lastX: event.clientX, lastY: event.clientY, lastTime: event.timeStamp, velocityX: 0, velocityY: 0}
+      : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false, lastX: event.clientX, lastY: event.clientY, lastTime: event.timeStamp, velocityX: 0, velocityY: 0};
     if (state.pointers.size === 2) {
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
@@ -768,6 +821,14 @@
       }
       state.transform.x = state.gesture.originX + event.clientX - state.gesture.x;
       state.transform.y = state.gesture.originY + event.clientY - state.gesture.y;
+      const elapsed = Math.max(1, event.timeStamp - state.gesture.lastTime);
+      const instantX = (event.clientX - state.gesture.lastX) / elapsed;
+      const instantY = (event.clientY - state.gesture.lastY) / elapsed;
+      state.gesture.velocityX = state.gesture.velocityX * 0.55 + instantX * 0.45;
+      state.gesture.velocityY = state.gesture.velocityY * 0.55 + instantY * 0.45;
+      state.gesture.lastX = event.clientX;
+      state.gesture.lastY = event.clientY;
+      state.gesture.lastTime = event.timeStamp;
     } else if (state.gesture?.type === "pinch" && state.pointers.size >= 2) {
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
@@ -783,6 +844,7 @@
   });
   const endPointer = event => {
     const pointer = state.pointers.get(event.pointerId);
+    const endedGesture = state.gesture;
     const tapGesture = state.pointers.size === 1 && state.gesture?.type === "pending" && !state.gesture.fromPinch && pointer?.pointerType === "touch";
     if (tapGesture) {
       const now = Date.now();
@@ -793,9 +855,9 @@
         window.clearTimeout(state.pendingTapTimer);
         state.pendingTapTimer = 0;
         state.lastTap = null;
-        animateZoomAt(event.clientX, event.clientY);
+        handleDoubleTap(event.clientX, event.clientY);
       } else {
-        state.lastTap = {time: now, x: event.clientX, y: event.clientY};
+        state.lastTap = {time: now, x: event.clientX, y: event.clientY, endpoint: pointer.endpoint};
         window.clearTimeout(state.pendingTapTimer);
         state.pendingTapTimer = pointer.endpoint ? window.setTimeout(() => {
           openEndpoint(pointer.endpoint);
@@ -804,18 +866,26 @@
       }
     }
     state.pointers.delete(event.pointerId);
-    if (!state.pointers.size) { state.gesture = null; elements.boardViewport.classList.remove("panning"); }
+    if (!state.pointers.size) {
+      state.gesture = null;
+      elements.boardViewport.classList.remove("panning");
+      if (event.type === "pointerup" && endedGesture?.type === "pan" && endedGesture.moved && pointer?.pointerType === "touch") {
+        const releaseWeight = Math.max(0, 1 - Math.max(0, event.timeStamp - endedGesture.lastTime) / 100);
+        startInertia((endedGesture.velocityX || 0) * releaseWeight, (endedGesture.velocityY || 0) * releaseWeight);
+      }
+    }
     else {
       const pointer = [...state.pointers.values()][0];
       state.gesture = (pointer.overBox || pointer.pointerType === "touch")
-        ? {type: "pending", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true}
-        : {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true};
+        ? {type: "pending", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true, lastX: pointer.x, lastY: pointer.y, lastTime: event.timeStamp, velocityX: 0, velocityY: 0}
+        : {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true, lastX: pointer.x, lastY: pointer.y, lastTime: event.timeStamp, velocityX: 0, velocityY: 0};
     }
   };
   elements.boardViewport.addEventListener("pointerup", endPointer);
   elements.boardViewport.addEventListener("pointercancel", endPointer);
   elements.boardViewport.addEventListener("wheel", event => {
     event.preventDefault();
+    stopTransformAnimation();
     const rect = elements.boardViewport.getBoundingClientRect();
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
     const nextZoom = Math.max(0.25, Math.min(2.5, state.transform.zoom * Math.exp(-event.deltaY * 0.0015)));
