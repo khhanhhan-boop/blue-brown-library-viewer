@@ -27,6 +27,7 @@
     pendingTapTimer: 0,
     suppressBoardClickUntil: 0,
     longPressTimer: 0,
+    ancestorReleasePointerId: null,
     transformFrame: 0,
     inertiaFrame: 0,
     expandedNav: new Set(),
@@ -657,7 +658,7 @@
         pending.push({id: parentId, distance});
       });
     }
-    return headings.sort((a, b) => a.distance - b.distance || (Number(a.item.data.order) || 0) - (Number(b.item.data.order) || 0));
+    return headings.sort((a, b) => b.distance - a.distance || (Number(a.item.data.headingLevel) || 2) - (Number(b.item.data.headingLevel) || 2) || (Number(a.item.data.order) || 0) - (Number(b.item.data.order) || 0));
   }
 
   function closeAncestorSheet() {
@@ -689,9 +690,11 @@
     }
     const farthest = Math.max(...headings.map(entry => entry.distance));
     elements.ancestorSheetList.innerHTML = headings.map(entry => {
-      const position = entry.distance === 1 ? "바로 위" : entry.distance === farthest ? "최상위" : `상위 ${entry.distance}단계`;
+      const position = entry.distance === farthest ? "최상위" : entry.distance === 1 ? "하위 타이틀" : "상위 타이틀";
       const title = String(entry.item.data.title || "새 제목").replace(/\s+/g, " ").trim();
-      return `<button type="button" data-ancestor-heading="${escapeHtml(entry.item.data.id)}" data-ancestor-endpoint="${escapeHtml(endpoint)}"><span><small>${position} · ${headingLevelName(entry.item.data.headingLevel)}</small><strong>${escapeHtml(title)}</strong></span><b aria-hidden="true">›</b></button>`;
+      const level = Math.max(1, Math.min(4, Number(entry.item.data.headingLevel) || 2));
+      const color = escapeHtml(entry.item.data.color || project.defaultColor || "#704552");
+      return `<button type="button" class="ancestor-heading level-${level}" style="--ancestor-color:${color}" data-ancestor-heading="${escapeHtml(entry.item.data.id)}" data-ancestor-endpoint="${escapeHtml(endpoint)}"><span><small>${position} · ${headingLevelName(level)}</small><strong>${escapeHtml(title)}</strong></span><b aria-hidden="true">›</b></button>`;
     }).join("");
     elements.ancestorSheet.classList.remove("hidden");
     elements.ancestorSheet.setAttribute("aria-hidden", "false");
@@ -892,6 +895,8 @@
         window.clearTimeout(state.pendingTapTimer);
         state.pendingTapTimer = 0;
         state.longPressTimer = 0;
+        state.ancestorReleasePointerId = event.pointerId;
+        elements.ancestorSheet.classList.add("awaiting-release");
         resetPointerGesture(true);
         showAncestorSheet(endpoint);
       }, 480);
@@ -998,6 +1003,13 @@
     state.pointers.delete(event.pointerId);
     if (!state.pointers.size) resetPointerGesture(false);
   });
+  const releaseAncestorSheetPointer = event => {
+    if (state.ancestorReleasePointerId !== event.pointerId) return;
+    state.ancestorReleasePointerId = null;
+    elements.ancestorSheet.classList.remove("awaiting-release");
+  };
+  window.addEventListener("pointerup", releaseAncestorSheetPointer, true);
+  window.addEventListener("pointercancel", releaseAncestorSheetPointer, true);
   window.addEventListener("keydown", event => { if (event.key === "Escape" && !elements.ancestorSheet.classList.contains("hidden")) closeAncestorSheet(); });
   elements.boardViewport.addEventListener("wheel", event => {
     event.preventDefault();
