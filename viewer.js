@@ -22,6 +22,10 @@
     transform: {x: 0, y: 0, zoom: 1},
     pointers: new Map(),
     gesture: null,
+    lastTap: null,
+    pendingTapTimer: 0,
+    suppressBoardClickUntil: 0,
+    transformTimer: 0,
     expandedNav: new Set(),
     allNavExpanded: true,
     collapsedNoteSources: new Set(),
@@ -256,6 +260,32 @@
     elements.boardStage.style.transform = `translate(${state.transform.x}px, ${state.transform.y}px) scale(${state.transform.zoom})`;
   }
 
+  function stopTransformAnimation() {
+    window.clearTimeout(state.transformTimer);
+    state.transformTimer = 0;
+    elements.boardStage.style.transition = "none";
+  }
+
+  function animateZoomAt(clientX, clientY, factor = 1.45) {
+    const rect = elements.boardViewport.getBoundingClientRect();
+    const x = clientX - rect.left, y = clientY - rect.top;
+    const currentZoom = state.transform.zoom;
+    const nextZoom = Math.max(0.25, Math.min(2.5, currentZoom * factor));
+    if (Math.abs(nextZoom - currentZoom) < 0.001) return;
+    const worldX = (x - state.transform.x) / currentZoom;
+    const worldY = (y - state.transform.y) / currentZoom;
+    window.clearTimeout(state.transformTimer);
+    elements.boardStage.style.transition = "transform 240ms cubic-bezier(0.2, 0.72, 0.18, 1)";
+    state.transform.x = x - worldX * nextZoom;
+    state.transform.y = y - worldY * nextZoom;
+    state.transform.zoom = nextZoom;
+    applyTransform();
+    state.transformTimer = window.setTimeout(() => {
+      elements.boardStage.style.transition = "";
+      state.transformTimer = 0;
+    }, 270);
+  }
+
   function fitBoard(animate = true) {
     const project = currentProject();
     const items = project ? [...project.nodes, ...project.groups] : [];
@@ -266,9 +296,13 @@
     const maxY = Math.max(...items.map(item => item.y + item.height / 2)) + 90;
     const zoom = Math.max(0.28, Math.min(1.35, Math.min(elements.boardViewport.clientWidth / Math.max(1, maxX - minX), elements.boardViewport.clientHeight / Math.max(1, maxY - minY))));
     state.transform = {x: (elements.boardViewport.clientWidth - (minX + maxX) * zoom) / 2, y: (elements.boardViewport.clientHeight - (minY + maxY) * zoom) / 2, zoom};
+    window.clearTimeout(state.transformTimer);
     elements.boardStage.style.transition = animate ? "transform 280ms ease" : "none";
     applyTransform();
-    window.setTimeout(() => { elements.boardStage.style.transition = ""; }, 300);
+    state.transformTimer = window.setTimeout(() => {
+      elements.boardStage.style.transition = "";
+      state.transformTimer = 0;
+    }, 300);
   }
 
   function hierarchyChildren(project, endpoint) {
@@ -661,6 +695,11 @@
   });
 
   [elements.boardStage, elements.navTree].forEach(container => container.addEventListener("click", event => {
+    if (container === elements.boardStage && Date.now() < state.suppressBoardClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const target = event.target.closest("[data-endpoint]");
     if (target) openEndpoint(target.dataset.endpoint);
   }));
@@ -687,26 +726,46 @@
   });
 
   elements.boardViewport.addEventListener("pointerdown", event => {
-    const overBox = Boolean(event.target.closest(".board-box"));
+    const endpoint = event.target.closest("[data-endpoint]")?.dataset.endpoint || "";
+    const overBox = Boolean(endpoint);
     if (overBox && event.pointerType === "mouse") return;
     event.preventDefault();
+    stopTransformAnimation();
     elements.boardViewport.setPointerCapture(event.pointerId);
-    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox});
-    if (state.pointers.size === 1) state.gesture = overBox
-      ? {type: "pending"}
-      : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y};
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox, endpoint, pointerType: event.pointerType});
+    if (state.pointers.size === 1) state.gesture = (overBox || event.pointerType === "touch")
+      ? {type: "pending", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false}
+      : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false};
     if (state.pointers.size === 2) {
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
       state.gesture = {type: "pinch", distance: Math.hypot(a.x - b.x, a.y - b.y), zoom: state.transform.zoom, x: state.transform.x, y: state.transform.y, centerX: (a.x + b.x) / 2 - rect.left, centerY: (a.y + b.y) / 2 - rect.top};
+      window.clearTimeout(state.pendingTapTimer);
+      state.pendingTapTimer = 0;
+      state.lastTap = null;
+      state.suppressBoardClickUntil = Date.now() + 400;
     }
     elements.boardViewport.classList.add("panning");
   });
   elements.boardViewport.addEventListener("pointermove", event => {
     if (!state.pointers.has(event.pointerId)) return;
     const previous = state.pointers.get(event.pointerId);
-    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox: previous.overBox});
+    state.pointers.set(event.pointerId, {x: event.clientX, y: event.clientY, overBox: previous.overBox, endpoint: previous.endpoint, pointerType: previous.pointerType});
+    if (state.gesture?.type === "pending" && state.pointers.size === 1) {
+      const distance = Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y);
+      if (distance >= 7) {
+        state.gesture = {...state.gesture, type: "pan", moved: true};
+        window.clearTimeout(state.pendingTapTimer);
+        state.pendingTapTimer = 0;
+        state.lastTap = null;
+        state.suppressBoardClickUntil = Date.now() + 400;
+      }
+    }
     if (state.gesture?.type === "pan" && state.pointers.size === 1) {
+      if (Math.hypot(event.clientX - state.gesture.x, event.clientY - state.gesture.y) >= 7) {
+        state.gesture.moved = true;
+        state.suppressBoardClickUntil = Date.now() + 400;
+      }
       state.transform.x = state.gesture.originX + event.clientX - state.gesture.x;
       state.transform.y = state.gesture.originY + event.clientY - state.gesture.y;
     } else if (state.gesture?.type === "pinch" && state.pointers.size >= 2) {
@@ -723,13 +782,34 @@
     applyTransform();
   });
   const endPointer = event => {
+    const pointer = state.pointers.get(event.pointerId);
+    const tapGesture = state.pointers.size === 1 && state.gesture?.type === "pending" && !state.gesture.fromPinch && pointer?.pointerType === "touch";
+    if (tapGesture) {
+      const now = Date.now();
+      const previousTap = state.lastTap;
+      const isDoubleTap = previousTap && now - previousTap.time <= 280 && Math.hypot(event.clientX - previousTap.x, event.clientY - previousTap.y) <= 24;
+      state.suppressBoardClickUntil = now + 400;
+      if (isDoubleTap) {
+        window.clearTimeout(state.pendingTapTimer);
+        state.pendingTapTimer = 0;
+        state.lastTap = null;
+        animateZoomAt(event.clientX, event.clientY);
+      } else {
+        state.lastTap = {time: now, x: event.clientX, y: event.clientY};
+        window.clearTimeout(state.pendingTapTimer);
+        state.pendingTapTimer = pointer.endpoint ? window.setTimeout(() => {
+          openEndpoint(pointer.endpoint);
+          state.pendingTapTimer = 0;
+        }, 290) : 0;
+      }
+    }
     state.pointers.delete(event.pointerId);
     if (!state.pointers.size) { state.gesture = null; elements.boardViewport.classList.remove("panning"); }
     else {
       const pointer = [...state.pointers.values()][0];
-      state.gesture = pointer.overBox
-        ? {type: "pending"}
-        : {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y};
+      state.gesture = (pointer.overBox || pointer.pointerType === "touch")
+        ? {type: "pending", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true}
+        : {type: "pan", x: pointer.x, y: pointer.y, originX: state.transform.x, originY: state.transform.y, moved: false, fromPinch: true};
     }
   };
   elements.boardViewport.addEventListener("pointerup", endPointer);
