@@ -10,7 +10,7 @@
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
     boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
     noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
-    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
+    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerExpand: $("#readerExpand"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
     ancestorSheet: $("#ancestorSheet"), ancestorSheetList: $("#ancestorSheetList"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
@@ -543,6 +543,22 @@
     elements.readerPanel.classList.add("open");
   }
 
+  function closeReader() {
+    elements.readerPanel.classList.remove("open", "fullscreen");
+    elements.readerExpand.setAttribute("aria-pressed", "false");
+    elements.readerExpand.setAttribute("aria-label", "읽기 전체 화면");
+    elements.readerExpand.title = "전체 화면";
+    state.readerCopyText = "";
+    elements.readerCopy.classList.add("hidden");
+  }
+
+  function toggleReaderFullscreen() {
+    const fullscreen = elements.readerPanel.classList.toggle("fullscreen");
+    elements.readerExpand.setAttribute("aria-pressed", String(fullscreen));
+    elements.readerExpand.setAttribute("aria-label", fullscreen ? "읽기 원래 크기" : "읽기 전체 화면");
+    elements.readerExpand.title = fullscreen ? "원래 크기" : "전체 화면";
+  }
+
   function openNote(noteId) {
     const project = currentProject();
     const display = noteDisplay(project, noteId);
@@ -725,9 +741,7 @@
     if (!state.snapshot?.projects?.some(project => project.id === projectId)) return;
     state.projectId = projectId;
     state.selectedEndpoint = "";
-    elements.readerPanel.classList.remove("open");
-    state.readerCopyText = "";
-    elements.readerCopy.classList.add("hidden");
+    closeReader();
     renderProjects(); renderBoard(); renderNav(); renderNotes();
     if (fit) window.requestAnimationFrame(() => fitBoard(false));
     try { localStorage.setItem("blue-brown-viewer-project", projectId); } catch (_error) {}
@@ -822,11 +836,8 @@
     });
     renderNotes();
   });
-  elements.readerBack.addEventListener("click", () => {
-    elements.readerPanel.classList.remove("open");
-    state.readerCopyText = "";
-    elements.readerCopy.classList.add("hidden");
-  });
+  elements.readerBack.addEventListener("click", closeReader);
+  elements.readerExpand.addEventListener("click", toggleReaderFullscreen);
   elements.readerCopy.addEventListener("click", async () => {
     if (!state.readerCopyText) return;
     try {
