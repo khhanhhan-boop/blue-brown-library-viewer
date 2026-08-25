@@ -10,7 +10,7 @@
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
     boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
     noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
-    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerExpand: $("#readerExpand"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
+    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerExpand: $("#readerExpand"), readerFontDown: $("#readerFontDown"), readerFontUp: $("#readerFontUp"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
     ancestorSheet: $("#ancestorSheet"), ancestorSheetList: $("#ancestorSheetList"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
@@ -34,8 +34,10 @@
     allNavExpanded: true,
     collapsedNoteSources: new Set(),
     readerCopyText: "",
+    readerFontStep: 0,
     client: null,
   };
+  const READER_FONT_SCALES = [1, 1.15, 1.3, 1.45];
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, character => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"}[character]));
@@ -559,6 +561,23 @@
     elements.readerExpand.title = fullscreen ? "원래 크기" : "전체 화면";
   }
 
+  function setReaderFontStep(value, persist = true) {
+    const step = Math.max(0, Math.min(READER_FONT_SCALES.length - 1, Math.round(Number(value) || 0)));
+    const scale = READER_FONT_SCALES[step];
+    state.readerFontStep = step;
+    elements.readerPanel.style.setProperty("--reader-title-size", `${23 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-title-number-width", `${34 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-source-size", `${11 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-body-size", `${14 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-branch-size", `${15 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-number-width", `${27 * scale}px`);
+    elements.readerFontDown.disabled = step === 0;
+    elements.readerFontUp.disabled = step === READER_FONT_SCALES.length - 1;
+    elements.readerFontDown.setAttribute("aria-label", `글자 작게 · 현재 ${step + 1}단계`);
+    elements.readerFontUp.setAttribute("aria-label", `글자 크게 · 현재 ${step + 1}단계`);
+    if (persist) try { localStorage.setItem("blue-brown-viewer-reader-font", String(step)); } catch (_error) {}
+  }
+
   function openNote(noteId) {
     const project = currentProject();
     const display = noteDisplay(project, noteId);
@@ -787,6 +806,9 @@
   }
 
   async function initialize() {
+    let savedReaderFontStep = 0;
+    try { savedReaderFontStep = Number(localStorage.getItem("blue-brown-viewer-reader-font") || 0); } catch (_error) {}
+    setReaderFontStep(savedReaderFontStep, false);
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
     if (!hasCloudConfig) {
       await showViewer();
@@ -838,6 +860,8 @@
   });
   elements.readerBack.addEventListener("click", closeReader);
   elements.readerExpand.addEventListener("click", toggleReaderFullscreen);
+  elements.readerFontDown.addEventListener("click", () => setReaderFontStep(state.readerFontStep - 1));
+  elements.readerFontUp.addEventListener("click", () => setReaderFontStep(state.readerFontStep + 1));
   elements.readerCopy.addEventListener("click", async () => {
     if (!state.readerCopyText) return;
     try {

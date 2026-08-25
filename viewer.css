@@ -146,34 +146,39 @@ button { cursor: pointer; }
 .note-list-item p { display: -webkit-box; overflow: hidden; margin: 0; color: #5c504b; font-size: 12px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
 .reader-back { display: none; width: 29px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 20px; }
-.reader-expand { display: none; width: 29px; height: 29px; margin-left: auto; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 16px; }
+.reader-panel .panel-heading > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-font-controls { flex: 0 0 auto; display: flex; margin-left: auto; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: white; }
+.reader-font-controls button { width: 32px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 11px; font-weight: 850; }
+.reader-font-controls button + button { border-left: 1px solid var(--line); }
+.reader-font-controls button:disabled { color: rgba(48,41,39,0.28); cursor: default; }
+.reader-expand { display: none; width: 29px; height: 29px; margin-left: 0; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 16px; }
 .reader-expand[aria-pressed="true"] { background: var(--wine); color: white; }
 .reader-copy { height: 28px; margin-left: auto; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--wine) 35%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--wine) 9%, #fffdf8); color: var(--wine); font-size: 10px; font-weight: 850; }
 .reader-expand + .reader-copy { margin-left: 0; }
 .reader-copy:hover, .reader-copy:focus-visible { border-color: color-mix(in srgb, var(--wine) 58%, transparent); background: color-mix(in srgb, var(--wine) 15%, #fffdf8); }
 .reader-content { padding: 18px 19px 50px; background: rgba(252, 248, 239, 0.72); }
 .reader-empty { padding: 28px 14px; color: var(--muted); font-size: 12px; line-height: 1.65; text-align: center; }
-.reader-title { margin: 0 0 7px; font-family: Georgia, "Noto Serif KR", serif; font-size: 23px; line-height: 1.38; overflow-wrap: anywhere; }
-.reader-title.numbered { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: baseline; }
-.reader-source { margin: 0 0 18px; color: var(--muted); font-size: 11px; font-weight: 750; line-height: 1.5; }
-.markdown { color: #3c3431; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.reader-title { margin: 0 0 7px; font-family: Georgia, "Noto Serif KR", serif; font-size: var(--reader-title-size, 23px); line-height: 1.38; overflow-wrap: anywhere; }
+.reader-title.numbered { display: grid; grid-template-columns: var(--reader-title-number-width, 34px) minmax(0, 1fr); align-items: baseline; }
+.reader-source { margin: 0 0 18px; color: var(--muted); font-size: var(--reader-source-size, 11px); font-weight: 750; line-height: 1.5; }
+.markdown { color: #3c3431; font-size: var(--reader-body-size, 14px); line-height: 1.75; overflow-wrap: anywhere; }
 .markdown h1, .markdown h2, .markdown h3 { margin: 1.35em 0 0.55em; font-family: Georgia, "Noto Serif KR", serif; line-height: 1.38; }
 .markdown h1 { font-size: 1.55em; }.markdown h2 { font-size: 1.34em; }.markdown h3 { font-size: 1.16em; }
 .markdown p { margin: 0 0 1em; white-space: pre-wrap; }
 .markdown ul { margin: 0 0 1em; padding-left: 1.35em; }
 .markdown code { padding: 1px 4px; border-radius: 3px; background: rgba(87, 66, 57, 0.1); font-family: ui-monospace, monospace; font-size: 0.9em; }
-.branch-preview { min-width: 0; color: #292522; font-size: 15px; line-height: 1.72; }
+.branch-preview { min-width: 0; color: #292522; font-size: var(--reader-branch-size, 15px); line-height: 1.72; }
 .branch-heading { width: 100%; max-width: 100%; box-sizing: border-box; margin: 1.15em 0 0.45em; color: var(--wine); line-height: 1.35; overflow-wrap: anywhere; word-break: normal; }
 .branch-heading:first-child { margin-top: 0; }
-.branch-heading.numbered { display: grid; grid-template-columns: 27px minmax(0, 1fr); align-items: baseline; }
-.branch-heading:not(.numbered) { padding-left: 27px; }
+.branch-heading.numbered { display: grid; grid-template-columns: var(--reader-number-width, 27px) minmax(0, 1fr); align-items: baseline; }
+.branch-heading:not(.numbered) { padding-left: var(--reader-number-width, 27px); }
 .branch-heading-number, .branch-outline-number { color: #7a4655; font-weight: 850; font-variant-numeric: tabular-nums; }
 .branch-heading-text { min-width: 0; overflow-wrap: anywhere; }
 .branch-preview h2 { font-size: 1.467em; }.branch-preview h3 { font-size: 1.267em; }
 .branch-preview h4, .branch-preview h5, .branch-preview h6 { font-size: 1.067em; }
-.branch-list-item { position: relative; max-width: 100%; box-sizing: border-box; margin: 0.7em 0 0.25em min(calc(var(--depth, 0) * 14px), 42px); padding-left: 27px; overflow-wrap: anywhere; word-break: normal; }
+.branch-list-item { position: relative; max-width: 100%; box-sizing: border-box; margin: 0.7em 0 0.25em min(calc(var(--depth, 0) * 14px), 42px); padding-left: var(--reader-number-width, 27px); overflow-wrap: anywhere; word-break: normal; }
 .branch-list-item::before { content: ""; position: absolute; left: 10px; top: 0.72em; width: 5px; height: 5px; border-radius: 50%; background: var(--wine); }
-.branch-list-item.numbered { display: grid; grid-template-columns: 27px minmax(0, 1fr); align-items: baseline; padding-left: 0; }
+.branch-list-item.numbered { display: grid; grid-template-columns: var(--reader-number-width, 27px) minmax(0, 1fr); align-items: baseline; padding-left: 0; }
 .branch-list-item.numbered::before { display: none; }
 .branch-list-item > strong, .branch-list-item > button { min-width: 0; }
 .branch-list-item button { width: auto; max-width: 100%; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
