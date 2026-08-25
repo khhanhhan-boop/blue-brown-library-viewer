@@ -219,15 +219,15 @@
     const compact = data.compact ? " compact" : "";
     if (item.kind === "heading") {
       const level = Math.max(1, Math.min(4, Number(data.headingLevel) || 2));
-      return `<article class="board-box heading level-${level}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button">${inlineMarkdown(data.title)}</button></article>`;
+      return `<article class="board-box heading level-${level}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button">${inlineMarkdown(data.title)}</button></article>`;
     }
     if (item.kind === "text") {
       const parts = textParts(data.body || data.title);
-      return `<article class="board-box text${compact}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
+      return `<article class="board-box text${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
     }
     const display = noteDisplay(project, data.noteId);
     const body = textParts(display.body).body;
-    return `<article class="board-box note${compact}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor ? `<span class="box-author">${escapeHtml(display.paperAuthor)}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor ? `<span class="box-author">${escapeHtml(display.paperAuthor)}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
   }
 
   function renderBoard() {

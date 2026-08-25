@@ -90,7 +90,8 @@ button { cursor: pointer; }
 .edge-arrow-halo { stroke-width: 7; opacity: 0.2; }
 .edge-arrow-core { stroke-width: 2.4; opacity: 0.78; }
 .edge-label { fill: var(--edge-color); stroke: rgba(248, 240, 222, 0.92); stroke-width: 4px; paint-order: stroke fill; font-size: var(--edge-font-size, 12px); font-weight: 850; }
-.board-box { position: absolute; z-index: 1; overflow: hidden; transform: translate(-50%, -50%); border: 1px solid color-mix(in srgb, var(--box-color) 48%, rgba(76, 57, 51, 0.28)); border-radius: 6px; background: color-mix(in srgb, var(--box-color) 24%, rgba(255, 252, 243, 0.97)); color: var(--ink); box-shadow: 0 8px 18px rgba(57, 42, 37, 0.12), inset 0 0 0 1px rgba(255,255,255,0.44); text-align: left; }
+.board-box { position: absolute; z-index: 1; overflow: visible; transform: translate(-50%, -50%); border: 1px solid color-mix(in srgb, var(--box-color) 48%, rgba(76, 57, 51, 0.28)); border-radius: 6px; background: color-mix(in srgb, var(--box-color) 24%, rgba(255, 252, 243, 0.97)); color: var(--ink); box-shadow: 0 8px 18px rgba(57, 42, 37, 0.12), inset 0 0 0 1px rgba(255,255,255,0.44); text-align: left; }
+.board-box.bookmarked { z-index: 2; }
 .board-box.text { background: color-mix(in srgb, var(--box-color) 8%, #fffaf0); }
 .board-box.heading { border-color: color-mix(in srgb, var(--box-color) 72%, #211a19); background: color-mix(in srgb, var(--box-color) 62%, #2a2020); color: #fff9ec; }
 .board-box:hover, .board-box.selected { z-index: 3; border-color: color-mix(in srgb, var(--box-color) 72%, #fffaf0); box-shadow: 0 0 0 3px color-mix(in srgb, var(--box-color) 24%, transparent), 0 12px 26px rgba(58, 42, 37, 0.2); }
@@ -101,7 +102,7 @@ button { cursor: pointer; }
 .board-box.heading.level-2 { font-size: 18px; font-weight: 880; }
 .board-box.heading.level-3 { font-size: 15px; font-weight: 850; }
 .board-box.heading.level-4 { font-size: 13px; font-weight: 820; }
-.box-bookmark { position: absolute; z-index: 2; right: 7px; top: 5px; color: #171411; font-size: 22px; line-height: 1; -webkit-text-stroke: 0.5px rgba(218, 164, 48, 0.96); text-shadow: 0 0 1px rgba(255, 251, 211, 1), 0 0 6px rgba(255, 211, 61, 0.98), 0 0 14px rgba(229, 151, 10, 0.78), 0 0 20px rgba(183, 99, 4, 0.38); pointer-events: none; }
+.box-bookmark { position: absolute; z-index: 4; right: -10px; top: -9px; color: #171411; font-size: 22px; line-height: 1; -webkit-text-stroke: 0.5px rgba(218, 164, 48, 0.96); text-shadow: 0 0 1px rgba(255, 251, 211, 1), 0 0 6px rgba(255, 211, 61, 0.98), 0 0 14px rgba(229, 151, 10, 0.78), 0 0 20px rgba(183, 99, 4, 0.38); pointer-events: none; }
 .box-title { display: block; flex: 0 0 auto; overflow: visible; color: inherit; font-size: 14px; font-weight: 900; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
 .box-source { display: block; flex: 0 0 auto; overflow: visible; margin-top: 4px; color: #684a50; font-size: 11px; font-weight: 850; line-height: 1.35; word-break: keep-all; overflow-wrap: anywhere; }
 .box-author { display: block; flex: 0 0 auto; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
