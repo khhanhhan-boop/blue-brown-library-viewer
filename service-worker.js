@@ -1,5 +1,5 @@
-const CACHE_NAME = "blue-brown-viewer-v10";
-const APP_SHELL = ["./index.html", "./viewer.css", "./viewer.js", "./config.js", "./vendor/supabase.min.js", "./icon.png", "./manifest.webmanifest"];
+const CACHE_NAME = "blue-brown-viewer-v11";
+const APP_SHELL = ["./index.html", "./viewer.css", "./viewer.js", "./config.js", "./vendor/supabase.min.js", "./icon.png", "./icon-maskable.png", "./apple-touch-icon.png", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
