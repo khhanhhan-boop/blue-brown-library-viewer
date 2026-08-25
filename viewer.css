@@ -192,7 +192,7 @@ button { cursor: pointer; }
 .ancestor-sheet-panel h2 { margin: 0; font-family: Georgia, "Noto Serif KR", serif; font-size: 16px; }
 .ancestor-sheet-panel header button { width: 32px; height: 32px; margin-left: auto; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,0.55); color: var(--ink); font-size: 20px; }
 .ancestor-sheet-list { min-height: 0; display: grid; align-content: start; gap: 7px; overflow: auto; padding: 9px 10px max(14px, env(safe-area-inset-bottom)); overscroll-behavior: contain; touch-action: pan-y; }
-.ancestor-sheet-list > button { width: 100%; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ancestor-color) 74%, #211a19); border-radius: 6px; background: color-mix(in srgb, var(--ancestor-color) 62%, #2a2020); color: #fff9ec; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), 0 5px 12px rgba(47,33,30,0.12); text-align: left; }
+.ancestor-sheet-list > button { width: 100%; min-height: 56px; display: grid; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--ancestor-color, #704552); border-radius: 6px; background-color: var(--ancestor-color, #704552); background-image: linear-gradient(rgba(42,32,32,0.38), rgba(42,32,32,0.38)); color: #fff9ec; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2), 0 5px 12px rgba(47,33,30,0.16); text-align: left; }
 .ancestor-sheet-list > button:active { filter: brightness(1.12); transform: scale(0.992); }
 .ancestor-sheet-list span { min-width: 0; display: grid; gap: 3px; }
 .ancestor-sheet-list small { color: rgba(255,249,236,0.66); font-size: 9px; font-weight: 850; }
