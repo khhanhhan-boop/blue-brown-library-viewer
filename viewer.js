@@ -117,8 +117,13 @@
       body: note?.body || member.summary || "원본 메모를 찾지 못했습니다.",
       paperTitle: note?.paperTitle || member.sourceTitle || "출처 정보 없음",
       paperAuthor: note?.paperAuthor || member.sourceAuthor || "",
+      paperPage: note?.paperPage || member.sourcePage || "",
       note,
     };
+  }
+
+  function sourceCitation(display) {
+    return [display?.paperTitle, display?.paperAuthor, display?.paperPage ? `p.${display.paperPage}` : ""].filter(Boolean).join(" · ");
   }
 
   function showMessage(message, timeout = 2800) {
@@ -232,7 +237,7 @@
     }
     const display = noteDisplay(project, data.noteId);
     const body = textParts(display.body).body;
-    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor ? `<span class="box-author">${escapeHtml(display.paperAuthor)}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor || display.paperPage ? `<span class="box-author">${escapeHtml([display.paperAuthor, display.paperPage ? `p.${display.paperPage}` : ""].filter(Boolean).join(" · "))}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
   }
 
   function renderBoard() {
@@ -581,10 +586,10 @@
   function openNote(noteId) {
     const project = currentProject();
     const display = noteDisplay(project, noteId);
-    const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+    const source = sourceCitation(display);
     const body = textParts(display.body).body || display.body;
     const copyValue = [`# ${display.title}`, source ? `> 출처: ${source}` : "", body].filter(Boolean).join("\n\n");
-    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(display.paperTitle)}${display.paperAuthor ? ` · ${escapeHtml(display.paperAuthor)}` : ""}</p><div class="markdown">${markdown(body)}</div>`, copyValue);
+    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(source)}</p><div class="markdown">${markdown(body)}</div>`, copyValue);
   }
 
   function branchRows(project, rootId) {
@@ -621,7 +626,7 @@
       }
       const display = noteDisplay(project, item.data.noteId);
       const body = textParts(display.body).body || display.body;
-      const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+      const source = sourceCitation(display);
       return [`<div class="branch-list-item ${number ? "numbered" : ""}" data-branch-endpoint="${escapeHtml(item.data.id)}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : [])];
     }).join("");
     return `<div class="branch-preview">${html}</div>`;
@@ -644,7 +649,7 @@
       }
       const display = noteDisplay(project, item.data.noteId);
       const body = textParts(display.body).body || display.body;
-      const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
+      const source = sourceCitation(display);
       return [`**${prefix}${display.title}**`, body, source ? `> 출처: ${source}` : ""].filter(Boolean).join("\n\n");
     }).join("\n\n");
   }
