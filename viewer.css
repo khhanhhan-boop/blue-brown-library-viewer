@@ -91,6 +91,7 @@ button { cursor: pointer; }
 .edge-arrow-core { stroke-width: 2.4; opacity: 0.78; }
 .edge-label { fill: var(--edge-color); stroke: rgba(248, 240, 222, 0.92); stroke-width: 4px; paint-order: stroke fill; font-size: var(--edge-font-size, 12px); font-weight: 850; }
 .board-box { position: absolute; z-index: 1; overflow: visible; transform: translate(-50%, -50%); border: 1px solid color-mix(in srgb, var(--box-color) 48%, rgba(76, 57, 51, 0.28)); border-radius: 6px; background: color-mix(in srgb, var(--box-color) 24%, rgba(255, 252, 243, 0.97)); color: var(--ink); box-shadow: 0 8px 18px rgba(57, 42, 37, 0.12), inset 0 0 0 1px rgba(255,255,255,0.44); text-align: left; }
+.board-box, .board-box * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .board-box.bookmarked { z-index: 2; }
 .board-box.text { background: color-mix(in srgb, var(--box-color) 8%, #fffaf0); }
 .board-box.heading { border-color: color-mix(in srgb, var(--box-color) 72%, #211a19); background: color-mix(in srgb, var(--box-color) 62%, #2a2020); color: #fff9ec; }
