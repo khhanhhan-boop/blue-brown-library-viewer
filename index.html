@@ -83,6 +83,13 @@
       </aside>
     </div>
     <div class="viewer-message hidden" id="viewerMessage"></div>
+    <div class="ancestor-sheet hidden" id="ancestorSheet" aria-hidden="true">
+      <div class="ancestor-sheet-backdrop" data-ancestor-close></div>
+      <section class="ancestor-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="ancestorSheetTitle">
+        <header><div><small>메모의 위치</small><h2 id="ancestorSheetTitle">상위 타이틀에서 보기</h2></div><button type="button" data-ancestor-close aria-label="닫기">×</button></header>
+        <div class="ancestor-sheet-list" id="ancestorSheetList"></div>
+      </section>
+    </div>
   </main>
 
   <script src="./vendor/supabase.min.js"></script>

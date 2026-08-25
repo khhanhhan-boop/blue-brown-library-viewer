@@ -11,6 +11,7 @@
     boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
     noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
     readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
+    ancestorSheet: $("#ancestorSheet"), ancestorSheetList: $("#ancestorSheetList"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
   const hasCloudConfig = /^https:\/\//.test(config.supabaseUrl || "") && Boolean(config.publishableKey);
@@ -25,6 +26,7 @@
     lastTap: null,
     pendingTapTimer: 0,
     suppressBoardClickUntil: 0,
+    longPressTimer: 0,
     transformFrame: 0,
     inertiaFrame: 0,
     expandedNav: new Set(),
@@ -579,12 +581,12 @@
       const continuation = value => String(value || "").split("\n").filter(line => line.trim()).map(line => `<p class="branch-continuation" style="--depth:${depth}">${inlineMarkdown(line)}</p>`);
       if (item.kind === "text") {
         const parts = textParts(item.data.body || item.data.title);
-        return [`<div class="branch-list-item ${number ? "numbered" : ""}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<strong>${escapeHtml(parts.title)}</strong></div>`, ...continuation(parts.body)];
+        return [`<div class="branch-list-item ${number ? "numbered" : ""}" data-branch-endpoint="${escapeHtml(item.data.id)}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<strong>${escapeHtml(parts.title)}</strong></div>`, ...continuation(parts.body)];
       }
       const display = noteDisplay(project, item.data.noteId);
       const body = textParts(display.body).body || display.body;
       const source = [display.paperTitle, display.paperAuthor].filter(Boolean).join(" · ");
-      return [`<div class="branch-list-item ${number ? "numbered" : ""}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : [])];
+      return [`<div class="branch-list-item ${number ? "numbered" : ""}" data-branch-endpoint="${escapeHtml(item.data.id)}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : [])];
     }).join("");
     return `<div class="branch-preview">${html}</div>`;
   }
@@ -628,6 +630,77 @@
       const rows = branchRows(project, item.data.id);
       openReader("하위 글", branchHtml(project, rows), branchMarkdown(project, rows));
     }
+  }
+
+  function headingLevelName(value) {
+    return ({1: "대제목", 2: "제목", 3: "소제목", 4: "하위"})[Math.max(1, Math.min(4, Number(value) || 2))] || "타이틀";
+  }
+
+  function ancestorHeadings(project, endpoint) {
+    const incoming = new Map();
+    project.edges.filter(edge => edge.kind === "hierarchy").forEach(edge => {
+      if (!incoming.has(edge.to)) incoming.set(edge.to, []);
+      incoming.get(edge.to).push(edge.from);
+    });
+    const visited = new Set([endpoint]);
+    const pending = [{id: endpoint, distance: 0}];
+    const headings = [];
+    while (pending.length) {
+      const current = pending.shift();
+      (incoming.get(current.id) || []).forEach(parentId => {
+        if (visited.has(parentId)) return;
+        visited.add(parentId);
+        const item = endpointItem(project, parentId);
+        if (!item) return;
+        const distance = current.distance + 1;
+        if (item.kind === "heading") headings.push({item, distance});
+        pending.push({id: parentId, distance});
+      });
+    }
+    return headings.sort((a, b) => a.distance - b.distance || (Number(a.item.data.order) || 0) - (Number(b.item.data.order) || 0));
+  }
+
+  function closeAncestorSheet() {
+    elements.ancestorSheet.classList.add("hidden");
+    elements.ancestorSheet.setAttribute("aria-hidden", "true");
+    elements.ancestorSheetList.innerHTML = "";
+  }
+
+  function openAncestorPreview(headingId, endpoint) {
+    closeAncestorSheet();
+    openEndpoint(headingId);
+    window.requestAnimationFrame(() => {
+      const target = elements.readerContent.querySelector(`[data-branch-endpoint="${CSS.escape(endpoint)}"]`);
+      if (!target) return;
+      target.scrollIntoView({behavior: "smooth", block: "center"});
+      target.classList.add("context-target");
+      window.setTimeout(() => target.classList.remove("context-target"), 1800);
+    });
+  }
+
+  function showAncestorSheet(endpoint) {
+    const project = currentProject();
+    const item = endpointItem(project, endpoint);
+    if (!project || item?.kind !== "note") return false;
+    const headings = ancestorHeadings(project, endpoint);
+    if (!headings.length) {
+      showMessage("이 메모에는 상위 타이틀이 없습니다.");
+      return false;
+    }
+    const farthest = Math.max(...headings.map(entry => entry.distance));
+    elements.ancestorSheetList.innerHTML = headings.map(entry => {
+      const position = entry.distance === 1 ? "바로 위" : entry.distance === farthest ? "최상위" : `상위 ${entry.distance}단계`;
+      const title = String(entry.item.data.title || "새 제목").replace(/\s+/g, " ").trim();
+      return `<button type="button" data-ancestor-heading="${escapeHtml(entry.item.data.id)}" data-ancestor-endpoint="${escapeHtml(endpoint)}"><span><small>${position} · ${headingLevelName(entry.item.data.headingLevel)}</small><strong>${escapeHtml(title)}</strong></span><b aria-hidden="true">›</b></button>`;
+    }).join("");
+    elements.ancestorSheet.classList.remove("hidden");
+    elements.ancestorSheet.setAttribute("aria-hidden", "false");
+    return true;
+  }
+
+  function clearLongPress() {
+    window.clearTimeout(state.longPressTimer);
+    state.longPressTimer = 0;
   }
 
   function selectProject(projectId, fit = true) {
@@ -776,6 +849,11 @@
     if (state.expandedNav.has(id)) state.expandedNav.delete(id); else state.expandedNav.add(id);
     renderNav();
   });
+  elements.ancestorSheet.addEventListener("click", event => {
+    const choice = event.target.closest("[data-ancestor-heading]");
+    if (choice) openAncestorPreview(choice.dataset.ancestorHeading, choice.dataset.ancestorEndpoint);
+    else if (event.target.closest("[data-ancestor-close]")) closeAncestorSheet();
+  });
 
   elements.boardViewport.addEventListener("pointerdown", event => {
     const endpoint = event.target.closest("[data-endpoint]")?.dataset.endpoint || "";
@@ -788,6 +866,19 @@
     if (state.pointers.size === 1) state.gesture = (overBox || event.pointerType === "touch")
       ? {type: "pending", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false, lastX: event.clientX, lastY: event.clientY, lastTime: event.timeStamp, velocityX: 0, velocityY: 0}
       : {type: "pan", x: event.clientX, y: event.clientY, originX: state.transform.x, originY: state.transform.y, moved: false, lastX: event.clientX, lastY: event.clientY, lastTime: event.timeStamp, velocityX: 0, velocityY: 0};
+    if (state.pointers.size === 1 && event.pointerType === "touch" && endpointItem(currentProject(), endpoint)?.kind === "note") {
+      clearLongPress();
+      state.longPressTimer = window.setTimeout(() => {
+        if (state.pointers.size !== 1 || state.gesture?.type !== "pending") return;
+        state.gesture.type = "longpress";
+        state.suppressBoardClickUntil = Date.now() + 500;
+        state.lastTap = null;
+        window.clearTimeout(state.pendingTapTimer);
+        state.pendingTapTimer = 0;
+        showAncestorSheet(endpoint);
+        state.longPressTimer = 0;
+      }, 480);
+    }
     if (state.pointers.size === 2) {
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
@@ -795,6 +886,7 @@
       window.clearTimeout(state.pendingTapTimer);
       state.pendingTapTimer = 0;
       state.lastTap = null;
+      clearLongPress();
       state.suppressBoardClickUntil = Date.now() + 400;
     }
     elements.boardViewport.classList.add("panning");
@@ -810,6 +902,7 @@
         window.clearTimeout(state.pendingTapTimer);
         state.pendingTapTimer = 0;
         state.lastTap = null;
+        clearLongPress();
         state.suppressBoardClickUntil = Date.now() + 400;
       }
     }
@@ -842,6 +935,7 @@
     applyTransform();
   });
   const endPointer = event => {
+    clearLongPress();
     const pointer = state.pointers.get(event.pointerId);
     const endedGesture = state.gesture;
     const tapGesture = state.pointers.size === 1 && state.gesture?.type === "pending" && !state.gesture.fromPinch && pointer?.pointerType === "touch";
@@ -882,6 +976,7 @@
   };
   elements.boardViewport.addEventListener("pointerup", endPointer);
   elements.boardViewport.addEventListener("pointercancel", endPointer);
+  window.addEventListener("keydown", event => { if (event.key === "Escape" && !elements.ancestorSheet.classList.contains("hidden")) closeAncestorSheet(); });
   elements.boardViewport.addEventListener("wheel", event => {
     event.preventDefault();
     stopTransformAnimation();
