@@ -118,12 +118,19 @@
       paperTitle: note?.paperTitle || member.sourceTitle || "출처 정보 없음",
       paperAuthor: note?.paperAuthor || member.sourceAuthor || "",
       paperPage: note?.paperPage || member.sourcePage || "",
+      paperPageStart: note?.paperPageStart || member.sourcePageStart || "",
+      paperPageEnd: note?.paperPageEnd || member.sourcePageEnd || "",
       note,
     };
   }
 
+  function pageCitation(value) {
+    const page = String(value || "").trim();
+    return page ? `p.${page.replace("-", "–")}` : "";
+  }
+
   function sourceCitation(display) {
-    return [display?.paperTitle, display?.paperAuthor, display?.paperPage ? `p.${display.paperPage}` : ""].filter(Boolean).join(" · ");
+    return [display?.paperTitle, display?.paperAuthor, pageCitation(display?.paperPage)].filter(Boolean).join(" · ");
   }
 
   function showMessage(message, timeout = 2800) {
@@ -237,7 +244,7 @@
     }
     const display = noteDisplay(project, data.noteId);
     const body = textParts(display.body).body;
-    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor || display.paperPage ? `<span class="box-author">${escapeHtml([display.paperAuthor, display.paperPage ? `p.${display.paperPage}` : ""].filter(Boolean).join(" · "))}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor || display.paperPage ? `<span class="box-author">${escapeHtml([display.paperAuthor, pageCitation(display.paperPage)].filter(Boolean).join(" · "))}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
   }
 
   function renderBoard() {
