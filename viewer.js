@@ -677,6 +677,17 @@
     return outlineRows(project).filter(row => included.has(row.item.id));
   }
 
+  function readerHeadingColor(group) {
+      const value = /^#[0-9a-f]{6}$/i.test(group.color || "") ? group.color : "#684a50";
+      let rgb = [1, 3, 5].map(offset => parseInt(value.slice(offset, offset + 2), 16));
+      const luminance = channels => channels.map(channel => {
+        const c = channel / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      // On the light reading surface, keep at least 4.5:1 text contrast.
+      while (luminance(rgb) > 0.16) rgb = rgb.map(channel => Math.floor(channel * 0.94));
+      return "#" + rgb.map(channel => channel.toString(16).padStart(2, "0")).join("");
+    }
   function branchHtml(project, rows) {
     const numbering = outlineNumbering(outlineRows(project));
     const rootContentDepth = rows[0]?.item.kind === "heading" ? 0 : Math.max(0, Number(rows[0]?.contentDepth) || 0);
@@ -687,7 +698,7 @@
       if (item.kind === "heading") {
         const level = Math.max(2, Math.min(6, (Number(item.data.headingLevel) || 2) + 1));
         const title = String(item.data.title || "새 제목").replace(/\s+/g, " ").trim();
-        return `<h${level} class="branch-heading ${number ? "numbered" : ""}">${numberHtml("branch-heading-number")}<span class="branch-heading-text">${escapeHtml(title)}</span></h${level}>`;
+        return `<h${level} class="branch-heading ${number ? "numbered" : ""}" style="--reader-heading-ink:${readerHeadingColor(item.data)}">${numberHtml("branch-heading-number")}<span class="branch-heading-text">${escapeHtml(title)}</span></h${level}>`;
       }
       const depth = Math.max(0, Math.min(3, (Number(row.contentDepth) || 0) - rootContentDepth));
       const continuation = value => String(value || "").split("\n").filter(line => line.trim()).map(line => `<p class="branch-continuation" style="--depth:${depth}">${inlineMarkdown(line)}</p>`);
