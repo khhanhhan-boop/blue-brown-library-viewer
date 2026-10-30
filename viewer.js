@@ -5,12 +5,12 @@
   const elements = {
     loading: $("#viewerLoading"), auth: $("#authScreen"), authForm: $("#authForm"), authEmail: $("#authEmail"),
     authPassword: $("#authPassword"), authSubmit: $("#authSubmit"), authStatus: $("#authStatus"),
-    shell: $("#viewerShell"), projectSelect: $("#projectSelect"), projectList: $("#projectList"), projectCount: $("#projectCount"),
+    shell: $("#viewerShell"), projectSelect: $("#projectSelect"), projectNoteCount: $("#projectNoteCount"), projectList: $("#projectList"), projectCount: $("#projectCount"),
     publishedAt: $("#publishedAt"), refresh: $("#refreshViewer"), signOut: $("#signOutViewer"), tabs: [...document.querySelectorAll("[data-view]")],
     boardView: $("#boardView"), navView: $("#navView"), notesView: $("#notesView"), boardTitle: $("#boardTitle"),
-    boardViewport: $("#boardViewport"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
-    noteSearch: $("#noteSearch"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
-    readerContent: $("#readerContent"), readerBack: $("#readerBack"), readerExpand: $("#readerExpand"), readerFontDown: $("#readerFontDown"), readerFontUp: $("#readerFontUp"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
+    boardViewport: $("#boardViewport"), boardFit: $("#boardFit"), boardScale: $("#boardScale"), boardStage: $("#boardStage"), navTree: $("#navTree"), expandNav: $("#expandNav"),
+    noteSearch: $("#noteSearch"), noteSearchCount: $("#noteSearchCount"), noteList: $("#noteList"), toggleNoteSources: $("#toggleNoteSources"), readerPanel: $("#readerPanel"), readerHeading: $("#readerHeading"),
+    readerContent: $("#readerContent"), readerSources: $("#readerSources"), readerFontLevel: $("#readerFontLevel"), readerBack: $("#readerBack"), readerExpand: $("#readerExpand"), readerFontDown: $("#readerFontDown"), readerFontUp: $("#readerFontUp"), readerCopy: $("#readerCopy"), message: $("#viewerMessage"),
     ancestorSheet: $("#ancestorSheet"), ancestorSheetList: $("#ancestorSheetList"),
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
@@ -34,6 +34,11 @@
     allNavExpanded: true,
     collapsedNoteSources: new Set(),
     readerCopyText: "",
+    readerCopyFullText: "",
+    readerCopyPlainText: "",
+    readerSourcesVisible: true,
+    readerCamera: null,
+    readerReturnFocus: null,
     readerFontStep: 0,
     client: null,
   };
@@ -86,6 +91,21 @@
     return output.join("");
   }
 
+  // Matches the local board's inline title renderer; reader prose is independent.
+  function boardInlineMarkdown(value) {
+    return escapeHtml(String(value || ""))
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  }
+
+  function boardTitleHtml(value) {
+    const heading = String(value || "").match(/^(#{1,6})\s+(.+)$/);
+    return heading ? `<h${heading[1].length}>${boardInlineMarkdown(heading[2])}</h${heading[1].length}>` : `<p>${boardInlineMarkdown(value)}</p>`;
+  }
+
   function textParts(value) {
     const lines = String(value || "").trim().split(/\r?\n/);
     const first = lines.findIndex(line => line.trim());
@@ -113,13 +133,14 @@
     const note = noteById(noteId);
     const member = project?.members?.[noteId] || {};
     return {
-      title: note?.title || member.lead || "삭제된 메모",
+      title: String(note?.body || "").trim().split(/\r?\n/).find(line => line.trim())?.trim() || note?.title || member.lead || "삭제된 메모",
       body: note?.body || member.summary || "원본 메모를 찾지 못했습니다.",
       paperTitle: note?.paperTitle || member.sourceTitle || "출처 정보 없음",
       paperAuthor: note?.paperAuthor || member.sourceAuthor || "",
       paperPage: note?.paperPage || member.sourcePage || "",
       paperPageStart: note?.paperPageStart || member.sourcePageStart || "",
       paperPageEnd: note?.paperPageEnd || member.sourcePageEnd || "",
+      paperPageStatus: note?.paperPageStatus || member.sourcePageStatus || "unset",
       note,
     };
   }
@@ -163,11 +184,11 @@
 
   function setView(view) {
     state.view = ["board", "nav", "notes"].includes(view) ? view : "board";
-    elements.tabs.forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
+    elements.tabs.forEach(button => { button.classList.toggle("active", button.dataset.view === state.view); button.setAttribute("aria-pressed", String(button.dataset.view === state.view)); });
     elements.boardView.classList.toggle("hidden", state.view !== "board");
     elements.navView.classList.toggle("hidden", state.view !== "nav");
     elements.notesView.classList.toggle("hidden", state.view !== "notes");
-    if (state.view === "board") window.requestAnimationFrame(() => fitBoard(false));
+    if (state.view === "board") window.requestAnimationFrame(applyTransform);
     if (state.view === "nav") renderNav();
     if (state.view === "notes") renderNotes();
   }
@@ -180,6 +201,9 @@
     const projects = state.snapshot?.projects || [];
     if (!projects.some(project => project.id === state.projectId)) state.projectId = projects[0]?.id || "";
     elements.projectCount.textContent = `${projects.length}`;
+    const count = projectNoteIds(currentProject()).size;
+    elements.projectNoteCount.textContent = `메모 ${count}개`;
+    elements.projectSelect.setAttribute("aria-label", `${currentProject()?.name || "프로젝트"} · 메모 ${count}개 · 프로젝트 선택`);
     elements.projectSelect.innerHTML = projects.map(project => `<option value="${escapeHtml(project.id)}" ${project.id === state.projectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("");
     elements.projectList.innerHTML = projects.map(project => `<button class="project-item ${project.id === state.projectId ? "active" : ""}" type="button" data-project="${escapeHtml(project.id)}" style="--project-color:${escapeHtml(project.defaultColor)}"><span>${escapeHtml(project.name)}</span></button>`).join("");
   }
@@ -236,15 +260,16 @@
     const compact = data.compact ? " compact" : "";
     if (item.kind === "heading") {
       const level = Math.max(1, Math.min(4, Number(data.headingLevel) || 2));
-      return `<article class="board-box heading level-${level}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button">${inlineMarkdown(data.title)}</button></article>`;
+      return `<article class="board-box heading level-${level}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-heading-text">${boardInlineMarkdown((data.autoFitTitle === true || (data.autoFitTitle === undefined && state.snapshot?.schemaVersion <= 5)) ? String(data.title || "").replace(/(?<=[^\s_\\])_(?=[^\s_])/g, "\n") : data.title)}</span></button></article>`;
     }
     if (item.kind === "text") {
       const parts = textParts(data.body || data.title);
-      return `<article class="board-box text${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(parts.title)}</span>${parts.body ? `<span class="box-summary">${inlineMarkdown(parts.body)}</span>` : ""}</button></article>`;
+      return `<article class="board-box text${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title-wrap"><span class="box-title">${boardTitleHtml(parts.title)}</span></span></button></article>`;
     }
     const display = noteDisplay(project, data.noteId);
-    const body = textParts(display.body).body;
-    return `<article class="board-box note${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button"><span class="box-title">${inlineMarkdown(display.title)}</span><span class="box-source">${escapeHtml(display.paperTitle)}</span>${display.paperAuthor || display.paperPage ? `<span class="box-author">${escapeHtml([display.paperAuthor, pageCitation(display.paperPage)].filter(Boolean).join(" · "))}</span>` : ""}${body ? `<span class="box-summary">${inlineMarkdown(body)}</span>` : ""}</button></article>`;
+    const sourceFree = display.note?.sourceFree === true || display.note?.sourceId === "e3b0c44298fc1c149afb";
+    const source = sourceFree ? "" : sourceCitation(display);
+    return `<article class="board-box note${sourceFree ? " source-free" : ""}${compact}${data.bookmarked ? " bookmarked" : ""}" data-endpoint="${escapeHtml(data.id)}" style="${style}">${bookmark}<button type="button" aria-label="${escapeHtml(display.title)}"><span class="box-content"><span class="box-title-wrap"><span class="box-title">${boardTitleHtml(display.title)}</span></span><span class="box-body-space" aria-hidden="true"></span>${source ? `<span class="box-source-meta" title="${escapeHtml(source)}"><span class="box-citation">${escapeHtml(source)}</span></span>` : ""}</span></button></article>`;
   }
 
   function renderBoard() {
@@ -276,6 +301,9 @@
 
   function applyTransform() {
     elements.boardStage.style.transform = `translate3d(${state.transform.x}px, ${state.transform.y}px, 0) scale(${state.transform.zoom})`;
+    const scale = Math.round(state.transform.zoom * 100);
+    elements.boardScale.textContent = `${scale}%`;
+    elements.boardFit.setAttribute("aria-label", `현재 배율 ${scale}%, 전체 맞춤`);
   }
 
   function stopInertia() {
@@ -314,7 +342,7 @@
     const maxX = Math.max(...items.map(item => item.x + item.width / 2)) + 90;
     const minY = Math.min(...items.map(item => item.y - item.height / 2)) - 90;
     const maxY = Math.max(...items.map(item => item.y + item.height / 2)) + 90;
-    const zoom = Math.max(0.28, Math.min(1.35, Math.min(elements.boardViewport.clientWidth / Math.max(1, maxX - minX), elements.boardViewport.clientHeight / Math.max(1, maxY - minY))));
+    const zoom = Math.max(0.01, Math.min(1.35, Math.min(elements.boardViewport.clientWidth / Math.max(1, maxX - minX), elements.boardViewport.clientHeight / Math.max(1, maxY - minY))));
     return {x: (elements.boardViewport.clientWidth - (minX + maxX) * zoom) / 2, y: (elements.boardViewport.clientHeight - (minY + maxY) * zoom) / 2, zoom};
   }
 
@@ -373,6 +401,19 @@
       state.transform = target;
       applyTransform();
     }
+  }
+
+  function initialBoardView() {
+    const fit = boardFitTransform();
+    if (!fit) return;
+    if (window.innerWidth > 720 || fit.zoom >= 0.85) { fitBoard(false); return; }
+    const project = currentProject();
+    const headings = project.groups.filter(group => group.type !== "text").sort((a,b) => (Number(a.headingLevel)||2)-(Number(b.headingLevel)||2) || a.y-b.y || a.x-b.x);
+    const anchor = headings[0] || project.nodes[0];
+    if (!anchor) { fitBoard(false); return; }
+    const zoom = Math.min(1, Math.max(0.75, (elements.boardViewport.clientWidth - 32) / Math.max(280, anchor.width)));
+    state.transform = {zoom, x: elements.boardViewport.clientWidth / 2 - anchor.x * zoom, y: 24 - (anchor.y - anchor.height / 2) * zoom};
+    applyTransform();
   }
 
   function hierarchyChildren(project, endpoint) {
@@ -536,6 +577,7 @@
     if (!project) { elements.noteList.innerHTML = ""; return; }
     const query = elements.noteSearch.value.trim().toLocaleLowerCase();
     const notes = projectNotes(project).filter(note => !query || [note.title, note.body, note.paperTitle, note.paperAuthor].join(" ").toLocaleLowerCase().includes(query));
+    elements.noteSearchCount.textContent = query ? `${notes.length}개` : "";
     const groups = noteSourceGroups(notes);
     const collapsedCount = groups.filter(group => state.collapsedNoteSources.has(noteSourceStateKey(project, group.key))).length;
     elements.toggleNoteSources.textContent = groups.length > 0 && collapsedCount === groups.length ? "모두 펴기" : "모두 접기";
@@ -548,26 +590,40 @@
     }).join("") || `<div class="reader-empty">표시할 메모가 없습니다.</div>`;
   }
 
-  function openReader(title, html, copyValue = "") {
+  function openReader(title, html, copyValue = "", copyWithoutSources = copyValue) {
+    const opening = !elements.readerPanel.classList.contains("open");
+    const oldWidth = elements.boardViewport.clientWidth;
+    if (opening) { state.readerCamera = {...state.transform}; state.readerReturnFocus = document.activeElement; }
     elements.readerHeading.textContent = title;
     elements.readerContent.innerHTML = html;
     elements.readerContent.scrollTop = 0;
-    state.readerCopyText = String(copyValue || "").trim();
+    state.readerCopyFullText = String(copyValue || "").trim();
+    state.readerCopyPlainText = String(copyWithoutSources || "").trim();
+    applyReaderSources();
     elements.readerCopy.classList.toggle("hidden", !state.readerCopyText);
     elements.readerPanel.classList.add("open");
+    elements.shell.classList.add("reader-open");
+    if (opening && window.innerWidth > 720 && elements.boardViewport.clientWidth) { state.transform.x += (elements.boardViewport.clientWidth - oldWidth) / 2; applyTransform(); }
+    elements.readerPanel.setAttribute("aria-label", title);
+    elements.readerContent.focus({preventScroll: true});
   }
 
   function closeReader() {
+    elements.shell.classList.remove("reader-open", "reader-fullscreen");
+    if (state.readerCamera) { state.transform = state.readerCamera; state.readerCamera = null; applyTransform(); }
     elements.readerPanel.classList.remove("open", "fullscreen");
     elements.readerExpand.setAttribute("aria-pressed", "false");
     elements.readerExpand.setAttribute("aria-label", "읽기 전체 화면");
     elements.readerExpand.title = "전체 화면";
     state.readerCopyText = "";
     elements.readerCopy.classList.add("hidden");
+    state.readerCopyFullText = "";
+    if (state.readerReturnFocus?.isConnected) state.readerReturnFocus.focus({preventScroll: true});
   }
 
   function toggleReaderFullscreen() {
     const fullscreen = elements.readerPanel.classList.toggle("fullscreen");
+    elements.shell.classList.toggle("reader-fullscreen", fullscreen);
     elements.readerExpand.setAttribute("aria-pressed", String(fullscreen));
     elements.readerExpand.setAttribute("aria-label", fullscreen ? "읽기 원래 크기" : "읽기 전체 화면");
     elements.readerExpand.title = fullscreen ? "원래 크기" : "전체 화면";
@@ -580,14 +636,22 @@
     elements.readerPanel.style.setProperty("--reader-title-size", `${23 * scale}px`);
     elements.readerPanel.style.setProperty("--reader-title-number-width", `${34 * scale}px`);
     elements.readerPanel.style.setProperty("--reader-source-size", `${11 * scale}px`);
-    elements.readerPanel.style.setProperty("--reader-body-size", `${14 * scale}px`);
+    elements.readerPanel.style.setProperty("--reader-body-size", `${16 * scale}px`);
     elements.readerPanel.style.setProperty("--reader-branch-size", `${15 * scale}px`);
     elements.readerPanel.style.setProperty("--reader-number-width", `${27 * scale}px`);
+    elements.readerFontLevel.textContent = `${Math.round(scale * 100)}%`;
     elements.readerFontDown.disabled = step === 0;
     elements.readerFontUp.disabled = step === READER_FONT_SCALES.length - 1;
     elements.readerFontDown.setAttribute("aria-label", `글자 작게 · 현재 ${step + 1}단계`);
     elements.readerFontUp.setAttribute("aria-label", `글자 크게 · 현재 ${step + 1}단계`);
     if (persist) try { localStorage.setItem("blue-brown-viewer-reader-font", String(step)); } catch (_error) {}
+  }
+
+  function applyReaderSources(persist = false) {
+    elements.readerPanel.classList.toggle("hide-reader-sources", !state.readerSourcesVisible);
+    elements.readerSources.setAttribute("aria-pressed", String(state.readerSourcesVisible));
+    state.readerCopyText = state.readerSourcesVisible ? state.readerCopyFullText : state.readerCopyPlainText;
+    if (persist) try { localStorage.setItem("blue-brown-viewer-reader-sources", String(state.readerSourcesVisible)); } catch (_error) {}
   }
 
   function openNote(noteId) {
@@ -596,7 +660,7 @@
     const source = sourceCitation(display);
     const body = textParts(display.body).body || display.body;
     const copyValue = [`# ${display.title}`, source ? `> 출처: ${source}` : "", body].filter(Boolean).join("\n\n");
-    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(source)}</p><div class="markdown">${markdown(body)}</div>`, copyValue);
+    openReader("메모", `<h1 class="reader-title">${escapeHtml(display.title)}</h1><p class="reader-source">${escapeHtml(source)}</p><div class="markdown">${markdown(body)}</div>`, copyValue, [`# ${display.title}`, body].filter(Boolean).join("\n\n"));
   }
 
   function branchRows(project, rootId) {
@@ -639,7 +703,7 @@
     return `<div class="branch-preview">${html}</div>`;
   }
 
-  function branchMarkdown(project, rows) {
+  function branchMarkdown(project, rows, includeSources = true) {
     const numbering = outlineNumbering(outlineRows(project));
     return rows.flatMap(row => {
       const item = row.item;
@@ -657,7 +721,7 @@
       const display = noteDisplay(project, item.data.noteId);
       const body = textParts(display.body).body || display.body;
       const source = sourceCitation(display);
-      return [`**${prefix}${display.title}**`, body, source ? `> 출처: ${source}` : ""].filter(Boolean).join("\n\n");
+      return [`**${prefix}${display.title}**`, body, source && includeSources ? `> 출처: ${source}` : ""].filter(Boolean).join("\n\n");
     }).join("\n\n");
   }
 
@@ -676,7 +740,7 @@
       openReader("글", `<h1 class="reader-title ${number ? "numbered" : ""}">${number ? `<span class="branch-number">${escapeHtml(number)}</span>` : ""}<span>${inlineMarkdown(parts.title)}</span></h1><div class="markdown">${markdown(parts.body)}</div>`, copyValue);
     } else {
       const rows = branchRows(project, item.data.id);
-      openReader("하위 글", branchHtml(project, rows), branchMarkdown(project, rows));
+      openReader("하위 글", branchHtml(project, rows), branchMarkdown(project, rows), branchMarkdown(project, rows, false));
     }
   }
 
@@ -774,7 +838,7 @@
     state.selectedEndpoint = "";
     closeReader();
     renderProjects(); renderBoard(); renderNav(); renderNotes();
-    if (fit) window.requestAnimationFrame(() => fitBoard(false));
+    if (fit) window.requestAnimationFrame(initialBoardView);
     try { localStorage.setItem("blue-brown-viewer-project", projectId); } catch (_error) {}
   }
 
@@ -783,7 +847,7 @@
     if (!state.snapshot.projects.some(project => project.id === state.projectId)) state.projectId = state.snapshot.projects.some(project => project.id === savedProject) ? savedProject : state.snapshot.projects[0]?.id || "";
     elements.publishedAt.textContent = state.snapshot.publishedAt ? `게시 ${new Date(state.snapshot.publishedAt).toLocaleString("ko-KR")}` : "";
     renderProjects(); renderBoard(); renderNav(); renderNotes(); setView(state.view);
-    window.requestAnimationFrame(() => fitBoard(false));
+    window.requestAnimationFrame(initialBoardView);
   }
 
   async function loadSnapshot() {
@@ -821,6 +885,8 @@
     let savedReaderFontStep = 0;
     try { savedReaderFontStep = Number(localStorage.getItem("blue-brown-viewer-reader-font") || 0); } catch (_error) {}
     setReaderFontStep(savedReaderFontStep, false);
+    try { state.readerSourcesVisible = localStorage.getItem("blue-brown-viewer-reader-sources") !== "false"; } catch (_error) {}
+    applyReaderSources();
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./service-worker.js").catch(() => {});
     if (!hasCloudConfig) {
       await showViewer();
@@ -870,6 +936,8 @@
     });
     renderNotes();
   });
+  elements.boardFit.addEventListener("click", () => { resetPointerGesture(true); stopInertia(); fitBoard(); });
+  elements.readerSources.addEventListener("click", () => { state.readerSourcesVisible = !state.readerSourcesVisible; applyReaderSources(true); });
   elements.readerBack.addEventListener("click", closeReader);
   elements.readerExpand.addEventListener("click", toggleReaderFullscreen);
   elements.readerFontDown.addEventListener("click", () => setReaderFontStep(state.readerFontStep - 1));
@@ -994,7 +1062,7 @@
       const [a, b] = [...state.pointers.values()];
       const rect = elements.boardViewport.getBoundingClientRect();
       const centerX = (a.x + b.x) / 2 - rect.left, centerY = (a.y + b.y) / 2 - rect.top;
-      const nextZoom = Math.max(0.25, Math.min(2.5, state.gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, state.gesture.distance)));
+      const nextZoom = Math.max(0.01, Math.min(2.5, state.gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, state.gesture.distance)));
       const worldX = (state.gesture.centerX - state.gesture.x) / state.gesture.zoom;
       const worldY = (state.gesture.centerY - state.gesture.y) / state.gesture.zoom;
       state.transform.zoom = nextZoom;
@@ -1063,13 +1131,13 @@
     stopTransformAnimation();
     const rect = elements.boardViewport.getBoundingClientRect();
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
-    const nextZoom = Math.max(0.25, Math.min(2.5, state.transform.zoom * Math.exp(-event.deltaY * 0.0015)));
+    const nextZoom = Math.max(0.01, Math.min(2.5, state.transform.zoom * Math.exp(-event.deltaY * 0.0015)));
     const worldX = (x - state.transform.x) / state.transform.zoom, worldY = (y - state.transform.y) / state.transform.zoom;
     state.transform.x = x - worldX * nextZoom; state.transform.y = y - worldY * nextZoom; state.transform.zoom = nextZoom;
     applyTransform();
   }, {passive: false});
 
-  window.addEventListener("resize", () => { if (state.view === "board") fitBoard(false); });
+  window.addEventListener("resize", () => { if (window.innerWidth <= 720) { elements.readerPanel.classList.remove("fullscreen"); elements.shell.classList.remove("reader-fullscreen"); elements.readerExpand.setAttribute("aria-pressed", "false"); elements.readerExpand.setAttribute("aria-label", "읽기 전체 화면"); } if (state.view === "board") fitBoard(false); });
   initialize().catch(error => {
     setLoading(true);
     elements.auth.classList.remove("hidden");

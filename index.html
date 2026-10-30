@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#352d2b">
+  <meta name="theme-color" content="#faf9f6">
   <title>청갈색 서재 · 읽기</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.png">
@@ -35,8 +35,8 @@
 
   <main class="viewer-shell hidden" id="viewerShell">
     <header class="viewer-header">
-      <div class="viewer-brand"><img src="./icon.png" alt=""><span><strong>청갈색 서재</strong><small>읽기 전용</small></span></div>
-      <label class="project-select-wrap"><span>현재 프로젝트</span><select id="projectSelect" aria-label="현재 프로젝트 선택"></select></label>
+      <div class="viewer-brand" title="청갈색 서재"><img src="./icon.png" alt="청갈색 서재"></div>
+      <label class="project-select-wrap"><select id="projectSelect" aria-label="현재 프로젝트 선택"></select><span id="projectNoteCount"></span></label>
       <nav class="view-tabs" aria-label="보기 방식">
         <button class="active" type="button" data-view="board">보드</button>
         <button type="button" data-view="nav">네비</button>
@@ -64,6 +64,7 @@
           <div class="board-viewport" id="boardViewport">
             <div class="board-stage" id="boardStage"></div>
           </div>
+          <button class="board-scale" id="boardFit" type="button" aria-label="현재 배율 · 전체 맞춤" title="전체 맞춤"><span id="boardScale">100%</span></button>
         </div>
 
         <div class="nav-view hidden" id="navView">
@@ -72,14 +73,21 @@
         </div>
 
         <div class="notes-view hidden" id="notesView">
-          <div class="content-toolbar notes-toolbar"><strong>메모</strong><input id="noteSearch" type="search" placeholder="메모와 출처 검색"><button type="button" id="toggleNoteSources">모두 접기</button></div>
+          <div class="content-toolbar notes-toolbar"><input id="noteSearch" type="search" aria-label="메모와 출처 검색" placeholder="메모와 출처 검색"><span id="noteSearchCount" role="status"></span><button type="button" id="toggleNoteSources">모두 접기</button></div>
           <div class="note-list" id="noteList"></div>
         </div>
       </section>
 
       <aside class="reader-panel" id="readerPanel">
-        <div class="panel-heading"><button class="reader-back" id="readerBack" type="button" aria-label="읽기 닫기">‹</button><strong id="readerHeading">열람</strong><span class="reader-font-controls" aria-label="글자 크기"><button id="readerFontDown" type="button" aria-label="글자 작게" title="글자 작게">가−</button><button id="readerFontUp" type="button" aria-label="글자 크게" title="글자 크게">가+</button></span><button class="reader-expand" id="readerExpand" type="button" aria-label="읽기 전체 화면" aria-pressed="false" title="전체 화면">⛶</button><button class="reader-copy hidden" id="readerCopy" type="button" title="현재 미리보기를 마크다운으로 복사">복사</button></div>
-        <article class="reader-content" id="readerContent"><div class="reader-empty">보드의 메모나 타이틀을 선택해 내용을 읽을 수 있습니다.</div></article>
+        <div class="panel-heading reader-tools" role="toolbar" aria-label="읽기 도구">
+          <button class="reader-back" id="readerBack" type="button" aria-label="읽기 닫기" title="돌아가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <strong id="readerHeading" class="visually-hidden">열람</strong>
+          <button id="readerSources" type="button" aria-label="출처 표시" title="출처 표시 전환" aria-pressed="true">출처</button>
+          <span class="reader-font-controls" aria-label="글자 크기"><button id="readerFontDown" type="button" aria-label="글자 작게" title="글자 작게">가−</button><output id="readerFontLevel">100%</output><button id="readerFontUp" type="button" aria-label="글자 크게" title="글자 크게">가+</button></span>
+          <button class="reader-copy hidden" id="readerCopy" type="button" aria-label="내용 복사" title="현재 표시 내용을 마크다운으로 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+          <button class="reader-expand" id="readerExpand" type="button" aria-label="읽기 전체 화면" aria-pressed="false" title="전체 화면"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+        </div>
+        <article class="reader-content" id="readerContent" tabindex="-1"><div class="reader-empty">보드의 메모나 타이틀을 선택해 내용을 읽을 수 있습니다.</div></article>
       </aside>
     </div>
     <div class="viewer-message hidden" id="viewerMessage"></div>
