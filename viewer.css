@@ -316,7 +316,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
 
 /* Same font, title width, padding and line spacing as app.css's unified cards.
    Keep the original width/height, including compact cards. No web auto-sizing. */
-.board-box.note,.board-box.text { border:1px solid color-mix(in srgb,var(--box-color) 32%,#d8d2cb); border-radius:6px; background:color-mix(in srgb,var(--box-color) 6%,#fffdfa); color:#34313a; box-shadow:0 2px 5px rgba(40,30,36,.05); }
+.board-box.note,.board-box.text { border:1px solid color-mix(in srgb,var(--box-color) 32%,#d8d2cb); border-radius:6px; background:color-mix(in srgb,var(--box-color) 10%,#fffdfa); color:#34313a; box-shadow:0 2px 5px rgba(40,30,36,.05); }
 .board-box.note:hover,.board-box.text:hover { box-shadow:0 3px 9px rgba(40,30,36,.1); }
 .board-box.selected { border-color:#796282; box-shadow:inset 0 0 0 1px #796282,0 2px 7px rgba(40,30,36,.06); }
 .board-box.note>button,.board-box.text>button { position:absolute; inset:0; width:100%; height:100%; min-height:0; padding:0; display:block; overflow:hidden; }
@@ -372,3 +372,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
 /* Match the local reader: use each heading color with readable contrast. */
 .branch-heading { color:var(--reader-heading-ink, var(--wine)); }
 .branch-heading .branch-heading-number { color:inherit; }
+
+/* Background paint follows the board note; prose geometry stays unchanged. */
+.branch-reader-note { position:relative; isolation:isolate; }
+.branch-reader-note::before { content:""; position:absolute; z-index:-1; pointer-events:none; top:-4px; bottom:-4px; left:max(0px,min(calc(var(--depth,0) * 14px + 27px),69px) - 5px); right:-5px; border-radius:6px; background:color-mix(in srgb,var(--reader-note-accent,#b99b78) 10%,#fffdfa); }

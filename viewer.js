@@ -709,7 +709,8 @@
       const display = noteDisplay(project, item.data.noteId);
       const body = textParts(display.body).body || display.body;
       const source = sourceCitation(display);
-      return [`<div class="branch-list-item ${number ? "numbered" : ""}" data-branch-endpoint="${escapeHtml(item.data.id)}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : [])];
+      const accent = /^#[0-9a-f]{6}$/i.test(item.data.color || "") ? item.data.color : (/^#[0-9a-f]{6}$/i.test(project.defaultColor || "") ? project.defaultColor : "#b99b78");
+      return [`<div class="branch-reader-note" style="--depth:${depth};--reader-note-accent:${accent}"><div class="branch-list-item ${number ? "numbered" : ""}" data-branch-endpoint="${escapeHtml(item.data.id)}" style="--depth:${depth}">${numberHtml("branch-outline-number")}<button type="button" data-note-id="${escapeHtml(item.data.noteId)}"><strong>${escapeHtml(display.title)}</strong></button></div>`, ...continuation(body), ...(source ? [`<blockquote class="branch-source" style="--depth:${depth}">출처: ${escapeHtml(source)}</blockquote>`] : []), "</div>"];
     }).join("");
     return `<div class="branch-preview">${html}</div>`;
   }
