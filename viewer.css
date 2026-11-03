@@ -306,7 +306,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
 .reader-title,.markdown h1,.markdown h2,.markdown h3,.note-source-label strong { font-family:inherit; }
 .markdown { line-height:1.8; }
 .branch-preview { line-height:1.7; }
-.branch-heading { margin-top:1.7em; margin-bottom:.85em; }
+.branch-heading { margin-top:.85em; margin-bottom:.5em; }
 .branch-source { padding:0; border:0; background:transparent; color:var(--muted); font-size:.78em; line-height:1.5; margin-top:.7em; margin-bottom:1.7em; }
 .notes-toolbar { background:var(--panel); padding:12px; gap:8px; }
 .notes-toolbar input { min-height:44px; }
@@ -375,4 +375,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
 
 /* Background paint follows the board note; prose geometry stays unchanged. */
 .branch-reader-note { position:relative; isolation:isolate; }
-.branch-reader-note::before { content:""; position:absolute; z-index:-1; pointer-events:none; top:-4px; bottom:-4px; left:max(0px,min(calc(var(--depth,0) * 14px + 27px),69px) - 5px); right:-5px; border-radius:6px; background:color-mix(in srgb,var(--reader-note-accent,#b99b78) 10%,#fffdfa); }
+.branch-reader-note::before { content:""; position:absolute; z-index:-1; pointer-events:none; top:-4px; bottom:-4px; left:max(0px,min(calc(var(--depth,0) * 6px + 14px),32px) - 5px); right:-5px; border-radius:6px; background:color-mix(in srgb,var(--reader-note-accent,#b99b78) 10%,#fffdfa); }
+
+/* C안 applies only to collected reading; single-note reader metrics stay intact. */
+.reader-content:has(> .branch-preview) { padding:14px 12px 18px; }
+.branch-heading:not(.numbered) { padding-left:10px; }
+.branch-list-item { margin-left:min(calc(var(--depth,0) * 6px),18px); padding-left:14px; }
+.branch-list-item::before { left:0; }
+.branch-continuation,.branch-source { margin-left:min(calc(var(--depth,0) * 6px + 14px),32px); }
