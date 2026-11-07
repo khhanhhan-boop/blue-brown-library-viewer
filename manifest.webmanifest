@@ -3,10 +3,10 @@
   "short_name": "청갈색 서재",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#eee4d3",
-  "theme_color": "#352d2b",
+  "background_color": "#f3f0e7",
+  "theme_color": "#25535a",
   "icons": [
-    {"src": "./icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "./icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {"src": "./icon.png?v=20261108A", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "./icon-maskable.png?v=20261108A", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ]
 }
