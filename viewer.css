@@ -182,7 +182,7 @@ button { cursor: pointer; }
 .branch-list-item.numbered::before { display: none; }
 .branch-list-item > strong, .branch-list-item > button { min-width: 0; }
 .branch-list-item button { width: auto; max-width: 100%; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
-.branch-list-item.context-target { border-radius: 4px; background: color-mix(in srgb, var(--wine) 11%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--wine) 7%, transparent); animation: context-target-pulse 900ms ease 2; }
+:is(.branch-list-item,.branch-heading).context-target { border-radius: 4px; background: color-mix(in srgb, var(--wine) 11%, transparent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--wine) 7%, transparent); animation: context-target-pulse 900ms ease 2; }
 .branch-continuation { margin: 0.55em 0 0.55em min(calc(var(--depth, 0) * 14px + 27px), 69px); white-space: pre-wrap; overflow-wrap: anywhere; }
 .branch-source { margin: 0.65em 0 0.65em min(calc(var(--depth, 0) * 14px + 27px), 69px); padding: 0.1em 0 0.1em 12px; border-left: 3px solid rgba(104, 74, 80, 0.35); color: #66564e; font-size: 0.82em; }
 .branch-number { min-width: 0; color: #7a4655; font-family: Georgia, "Noto Serif KR", serif; font-weight: 850; text-align: right; white-space: nowrap; }
@@ -296,6 +296,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
 .reader-tools button:hover { background:#f0eae6; }
 .reader-tools svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 .reader-tools #readerSources { width:58px; font-size:12px; font-weight:550; }
+.reader-tools .reader-board { display:none; font-size:12px; }
 .reader-tools #readerSources[aria-pressed="true"] { background:#eadce1; color:var(--wine); }
 .reader-tools .reader-font-controls { display:flex; align-items:center; margin:0 auto; border:0; border-radius:0; background:transparent; overflow:visible; }
 .reader-font-controls button { width:40px; min-width:40px; border:0!important; font-size:12px; }
@@ -353,6 +354,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline:2px so
   .reader-panel.open { position:static; height:100%; width:100%; border:0; }
   .reader-tools { min-height:58px; }
   .reader-tools .reader-expand { display:none; }
+  .reader-tools .reader-board:not(.hidden) { display:inline-grid; }
   .reader-content { padding:24px 22px 40px; }
   .notes-toolbar { flex-wrap:wrap; }
   .notes-toolbar input { flex:1 1 140px; }
