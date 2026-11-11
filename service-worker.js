@@ -1,4 +1,4 @@
-const CACHE_NAME = "blue-brown-viewer-v34-read-all";
+const CACHE_NAME = "blue-brown-viewer-v35-project-links";
 const APP_SHELL = ["./index.html", "./viewer.css", "./viewer.js", "./config.js", "./vendor/supabase.min.js", "./icon.png", "./icon.png?v=20261108A", "./icon-maskable.png", "./icon-maskable.png?v=20261108A", "./apple-touch-icon.png", "./apple-touch-icon.png?v=20261108A", "./manifest.webmanifest", "./manifest.webmanifest?v=20261108A"];
 
 self.addEventListener("install", event => {

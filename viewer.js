@@ -16,6 +16,7 @@
   };
   const config = window.BLUE_BROWN_VIEWER_CONFIG || {};
   const hasCloudConfig = /^https:\/\//.test(config.supabaseUrl || "") && Boolean(config.publishableKey);
+  let linkedProjectId = new URLSearchParams(window.location.hash.slice(1)).get("project") || "";
   const state = {
     snapshot: null,
     projectId: "",
@@ -914,7 +915,16 @@
       showMessage("네트워크에 연결되지 않아 마지막 열람 사본을 표시합니다.", 4800);
     }
     state.snapshot = snapshot;
+    const requestedProjectId = linkedProjectId;
+    linkedProjectId = "";
+    if (snapshot.projects.some(project => project.id === requestedProjectId)) {
+      state.projectId = requestedProjectId;
+      state.view = "board";
+    }
     renderSnapshot();
+    if (requestedProjectId && state.projectId !== requestedProjectId) {
+      showMessage("열람 사본에 연결된 마인드맵이 없습니다.", 4800);
+    }
   }
 
   async function showViewer() {
