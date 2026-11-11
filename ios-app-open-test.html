@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>청갈색 서재 앱 열기 테스트</title>
+<style>
+:root{color-scheme:light dark}
+body{font:1rem/1.6 system-ui,sans-serif;max-width:36rem;margin:2rem auto;padding:0 1.25rem}
+h1{font-size:1.5rem}
+a:not([hidden]){display:block;padding:.75rem 1rem;border:1px solid currentColor;border-radius:.6rem;font-weight:600}
+li{margin:1.25rem 0}
+</style>
+</head>
+<body>
+<main>
+<h1>청갈색 서재 앱 열기 테스트</h1>
+<p>홈 화면에 서재 웹앱이 설치된 아이폰에서 테스트해 주세요.</p>
+<ol>
+<li><a id="app" href="webapp://khhanhhan-boop.github.io/blue-brown-library-viewer/index.html">홈 화면의 서재 앱 열기</a><p>앱 전환기에 청갈색 서재가 별도 앱으로 나타나는지 확인해 주세요.</p></li>
+<li><a id="board" hidden>서론 보드까지 바로 열기</a><p id="guide">서재에서 다른 보드를 선택한 뒤 이 페이지로 돌아와 누르면, 서론으로 이동했는지 확인할 수 있어요.</p></li>
+</ol>
+</main>
+<script>
+const project = new URLSearchParams(location.hash.slice(1)).get('project');
+const board = document.getElementById('board');
+if (/^(?:agent-)?project-[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(project || '')) {
+  board.href = document.getElementById('app').getAttribute('href') + '#project=' + encodeURIComponent(project);
+  board.hidden = false;
+} else {
+  document.getElementById('guide').textContent = '서론 보드 테스트는 공유받은 전체 링크로 열어 주세요.';
+}
+</script>
+</body>
+</html>
